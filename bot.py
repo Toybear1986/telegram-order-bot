@@ -61,18 +61,24 @@ def categories_keyboard(menu):
         buttons.append([InlineKeyboardButton(category, callback_data=f"cat_{category}")])
     return InlineKeyboardMarkup(buttons)
 
-def items_keyboard(category, items):
+# Клавиатура товаров в категории – добавлен параметр user_id
+def items_keyboard(category, items, user_id):
     buttons = []
     for item in items:
         buttons.append([InlineKeyboardButton(item['name'], callback_data=f"item_{item['id']}")])
-    buttons.append([InlineKeyboardButton("◀ Назад в главное меню", callback_data="back_to_cats")])
+    # Кнопка "Назад в главное меню"
+    back_button = [InlineKeyboardButton("◀ Назад в главное меню", callback_data="back_to_cats")]
+    # Если корзина не пуста, добавляем кнопку "Сделать заказ"
+    if get_cart(user_id):
+        buttons.append([InlineKeyboardButton("🛒 Сделать заказ", callback_data="view_cart")])
+    buttons.append(back_button)
     return InlineKeyboardMarkup(buttons)
 
 def after_add_keyboard(category):
     buttons = [
         [InlineKeyboardButton(f"➕ Посмотреть еще раз {category}", callback_data=f"cat_{category}")],
         [InlineKeyboardButton("📋 В главное меню", callback_data="back_to_cats")],
-        [InlineKeyboardButton("🛒 Сделать/завершить заказ", callback_data="view_cart")]
+        [InlineKeyboardButton("🛒 Сделать заказ", callback_data="view_cart")]
     ]
     return InlineKeyboardMarkup(buttons)
 
@@ -118,9 +124,17 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         menu = context.bot_data.get('menu')
         if not menu:
             menu = await load_menu_and_build_index(context)
+        # Проверяем корзину и добавляем кнопку "Сделать заказ" при необходимости
+        cart = get_cart(update.effective_user.id)
+        if cart:
+            buttons = categories_keyboard(menu).inline_keyboard
+            buttons.append([InlineKeyboardButton("🛒 Сделать заказ", callback_data="view_cart")])
+            reply_markup = InlineKeyboardMarkup(buttons)
+        else:
+            reply_markup = categories_keyboard(menu)
         await query.edit_message_text(
             "Выберайте:",
-            reply_markup=categories_keyboard(menu)
+            reply_markup=reply_markup
         )
         return CHOOSING_CATEGORY
 
@@ -136,7 +150,11 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         context.user_data['current_category'] = category
         items_text = format_items_list(items)
         text = f"*{category}*\n\n{items_text}\n\nЧто вас заинтересовало?"
-        await query.edit_message_text(text, parse_mode='Markdown', reply_markup=items_keyboard(category, items))
+        # Передаём user_id в клавиатуру товаров
+        await query.edit_message_text(
+            text, parse_mode='Markdown',
+            reply_markup=items_keyboard(category, items, update.effective_user.id)
+        )
         return CHOOSING_ITEM
 
     elif data.startswith("item_"):
@@ -166,9 +184,15 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             text += f"_{item.get('description', '')}_\n\n"
             text += "Сколько добавить в заказ? (введите число)"
 
-            # Кнопка "Назад к списку"
+            # Формируем клавиатуру: всегда есть кнопка "Назад к списку"
             back_button = InlineKeyboardButton("◀ Назад к списку", callback_data=f"cat_{category}")
-            keyboard = InlineKeyboardMarkup([[back_button]])
+            # Если корзина не пуста, добавляем кнопку "Сделать заказ"
+            cart = get_cart(update.effective_user.id)
+            if cart:
+                checkout_button = InlineKeyboardButton("🛒 Сделать заказ", callback_data="view_cart")
+                keyboard = InlineKeyboardMarkup([[back_button], [checkout_button]])
+            else:
+                keyboard = InlineKeyboardMarkup([[back_button]])
 
             await query.edit_message_text(text, parse_mode='Markdown', reply_markup=keyboard)
             return ENTERING_QUANTITY
@@ -378,7 +402,7 @@ def main():
             CHOOSING_ITEM: [CallbackQueryHandler(button_handler)],
             ENTERING_QUANTITY: [
                 MessageHandler(filters.TEXT & ~filters.COMMAND, quantity_received),
-                CallbackQueryHandler(button_handler)  # для кнопки "Назад"
+                CallbackQueryHandler(button_handler)
             ],
             CONFIRM_ADD: [CallbackQueryHandler(button_handler)],
             VIEW_CART: [CallbackQueryHandler(button_handler)],
