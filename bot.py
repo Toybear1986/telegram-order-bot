@@ -159,7 +159,12 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             menu = await load_menu_and_build_index(context)
         items = menu.get(category, [])
         if not items:
-            await query.edit_message_text("Здесь пока ничего нет, но мы уже работаем над этим")
+            # Добавляем кнопку для возврата в главное меню
+            keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("📋 В главное меню", callback_data="back_to_cats")]])
+            await query.edit_message_text(
+                "Здесь пока ничего нет, но мы уже работаем над этим",
+                reply_markup=keyboard
+            )
             return CHOOSING_CATEGORY
         context.user_data['current_category'] = category
         items_text = format_items_list(items)
