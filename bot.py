@@ -345,6 +345,7 @@ async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # Основная функция запуска
 def main():
+    print("ЗАПУСК НОВОЙ ВЕРСИИ")
     application = Application.builder().token(BOT_TOKEN).build()
 
     conv_handler = ConversationHandler(
