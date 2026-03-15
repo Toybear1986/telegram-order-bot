@@ -104,7 +104,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("Меню временно недоступно. Попробуйте позже.")
         return ConversationHandler.END
     await update.message.reply_text(
-        "Добро пожаловать в меню мероприятия \"Пар да Мёд\"! Выберите:",
+        "Добро пожаловать в меню мероприятия \"Пар да Мёд\"! Выберайте:",
         reply_markup=categories_keyboard(menu)
     )
     return CHOOSING_CATEGORY
@@ -119,7 +119,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if not menu:
             menu = await load_menu_and_build_index(context)
         await query.edit_message_text(
-            "Выберите категорию:",
+            "Выберайте:",
             reply_markup=categories_keyboard(menu)
         )
         return CHOOSING_CATEGORY
