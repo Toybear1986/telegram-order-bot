@@ -1,4 +1,7 @@
 import sqlite3
+import logging
+
+logger = logging.getLogger(__name__)
 
 DB_NAME = 'orders.db'
 
@@ -34,7 +37,7 @@ def init_db():
 
 # ===== Работа с корзиной =====
 def add_to_cart(user_id, item_name, quantity, price):
-    logging.info(f"Добавление в корзину: user={user_id}, item={item_name}, qty={quantity}, price={price}")
+    logger.info(f"Добавление в корзину: user={user_id}, item={item_name}, qty={quantity}, price={price}")
     """Добавляет позицию в корзину или увеличивает количество, если уже есть"""
     conn = sqlite3.connect(DB_NAME)
     cur = conn.cursor()
