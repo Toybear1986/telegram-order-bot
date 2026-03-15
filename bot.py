@@ -4,6 +4,11 @@ import sqlite3
 from telegram import Update, ReplyKeyboardMarkup
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes, ConversationHandler
 
+import logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+logger.info("ЗАПУСК НОВОЙ ВЕРСИИ БОТА")
+
 # ===== НАСТРОЙКИ ИЗ ПЕРЕМЕННЫХ ОКРУЖЕНИЯ =====
 BOT_TOKEN = os.environ.get("BOT_TOKEN")
 ADMIN_CHAT_ID = int(os.environ.get("ADMIN_CHAT_ID", 0))
