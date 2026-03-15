@@ -61,16 +61,15 @@ def categories_keyboard(menu):
         buttons.append([InlineKeyboardButton(category, callback_data=f"cat_{category}")])
     return InlineKeyboardMarkup(buttons)
 
-# Клавиатура товаров в категории – добавлен параметр user_id
 def items_keyboard(category, items, user_id):
     buttons = []
     for item in items:
         buttons.append([InlineKeyboardButton(item['name'], callback_data=f"item_{item['id']}")])
     # Кнопка "Назад в главное меню"
     back_button = [InlineKeyboardButton("◀ Назад в главное меню", callback_data="back_to_cats")]
-    # Если корзина не пуста, добавляем кнопку "Сделать заказ"
+    # Если корзина не пуста, добавляем кнопку "Перейти в корзину"
     if get_cart(user_id):
-        buttons.append([InlineKeyboardButton("🛒 Сделать заказ", callback_data="view_cart")])
+        buttons.append([InlineKeyboardButton("🛒 Перейти в корзину", callback_data="view_cart")])
     buttons.append(back_button)
     return InlineKeyboardMarkup(buttons)
 
@@ -78,7 +77,7 @@ def after_add_keyboard(category):
     buttons = [
         [InlineKeyboardButton(f"➕ Посмотреть еще раз {category}", callback_data=f"cat_{category}")],
         [InlineKeyboardButton("📋 В главное меню", callback_data="back_to_cats")],
-        [InlineKeyboardButton("🛒 Сделать заказ", callback_data="view_cart")]
+        [InlineKeyboardButton("🛒 Сделать/завершить заказ", callback_data="view_cart")]
     ]
     return InlineKeyboardMarkup(buttons)
 
@@ -124,14 +123,17 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         menu = context.bot_data.get('menu')
         if not menu:
             menu = await load_menu_and_build_index(context)
-        # Проверяем корзину и добавляем кнопку "Сделать заказ" при необходимости
+        # Получаем базовую клавиатуру категорий
+        base_markup = categories_keyboard(menu)
+        # Извлекаем список кнопок (может быть кортежем, поэтому преобразуем в список)
+        base_keyboard = list(base_markup.inline_keyboard)
+        # Создаем копию, чтобы не изменять исходный объект
+        new_buttons = base_keyboard.copy()
+        # Проверяем корзину и добавляем кнопку "Перейти в корзину" при необходимости
         cart = get_cart(update.effective_user.id)
         if cart:
-            buttons = categories_keyboard(menu).inline_keyboard
-            buttons.append([InlineKeyboardButton("🛒 Сделать заказ", callback_data="view_cart")])
-            reply_markup = InlineKeyboardMarkup(buttons)
-        else:
-            reply_markup = categories_keyboard(menu)
+            new_buttons.append([InlineKeyboardButton("🛒 Перейти в корзину", callback_data="view_cart")])
+        reply_markup = InlineKeyboardMarkup(new_buttons)
         await query.edit_message_text(
             "Выберайте:",
             reply_markup=reply_markup
@@ -150,7 +152,6 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         context.user_data['current_category'] = category
         items_text = format_items_list(items)
         text = f"*{category}*\n\n{items_text}\n\nЧто вас заинтересовало?"
-        # Передаём user_id в клавиатуру товаров
         await query.edit_message_text(
             text, parse_mode='Markdown',
             reply_markup=items_keyboard(category, items, update.effective_user.id)
@@ -186,10 +187,10 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
             # Формируем клавиатуру: всегда есть кнопка "Назад к списку"
             back_button = InlineKeyboardButton("◀ Назад к списку", callback_data=f"cat_{category}")
-            # Если корзина не пуста, добавляем кнопку "Сделать заказ"
+            # Если корзина не пуста, добавляем кнопку "Перейти в корзину"
             cart = get_cart(update.effective_user.id)
             if cart:
-                checkout_button = InlineKeyboardButton("🛒 Сделать заказ", callback_data="view_cart")
+                checkout_button = InlineKeyboardButton("🛒 Перейти в корзину", callback_data="view_cart")
                 keyboard = InlineKeyboardMarkup([[back_button], [checkout_button]])
             else:
                 keyboard = InlineKeyboardMarkup([[back_button]])
