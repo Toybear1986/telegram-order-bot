@@ -9,6 +9,7 @@ def load_menu_from_csv(url):
     logger.info(f"Загрузка меню из {url}")
     try:
         response = requests.get(url, timeout=10)
+        response.encoding = 'utf-8'
         logger.info(f"Статус ответа: {response.status_code}")
         if response.status_code != 200:
             logger.error(f"Ошибка HTTP {response.status_code}")
