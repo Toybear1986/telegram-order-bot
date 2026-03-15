@@ -10,6 +10,8 @@ from menu import load_menu_from_csv
 from sheets import append_order_to_sheet
 import config
 
+print("ЗАПУСК НОВОЙ ВЕРСИИ")
+
 # Состояния для FSM
 (CHOOSING_CATEGORY, CHOOSING_ITEM, ENTERING_QUANTITY, CONFIRM_ADD,
  VIEW_CART, EDITING_CART, CHOOSING_EDIT_ACTION, ENTERING_NEW_QUANTITY) = range(8)
