@@ -1,5 +1,4 @@
 import gspread
-from oauth2client.service_account import ServiceAccountCredentials
 from config import GOOGLE_CREDENTIALS_INFO, ORDERS_SPREADSHEET_ID
 from datetime import datetime
 import logging
@@ -21,21 +20,14 @@ def append_order_to_sheet(order_data):
         logger.error("❌ ORDERS_SPREADSHEET_ID отсутствует")
         return False
 
-    logger.info("✅ GOOGLE_CREDENTIALS_INFO и ORDERS_SPREADSHEET_ID присутствуют")
-
-    scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
-
     try:
-        logger.info("Попытка авторизации через сервисный аккаунт...")
-        creds = ServiceAccountCredentials.from_json_keyfile_dict(GOOGLE_CREDENTIALS_INFO, scope)
-        client = gspread.authorize(creds)
-        logger.info("✅ Авторизация успешна")
+        # Новый способ авторизации (без предупреждений)
+        client = gspread.service_account_from_dict(GOOGLE_CREDENTIALS_INFO)
+        logger.info("✅ Авторизация через service_account_from_dict успешна")
 
-        logger.info(f"Открываем таблицу с ID: {ORDERS_SPREADSHEET_ID}")
         sheet = client.open_by_key(ORDERS_SPREADSHEET_ID).sheet1
         logger.info("✅ Таблица открыта, выбран первый лист")
 
-        # Подготовка строки: добавили поле username
         row = [
             datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
             order_data["user_id"],
