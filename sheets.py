@@ -1,6 +1,7 @@
 import gspread
 from config import GOOGLE_CREDENTIALS_INFO, ORDERS_SPREADSHEET_ID
 from datetime import datetime
+from zoneinfo import ZoneInfo  # для Python 3.9+
 import logging
 
 logger = logging.getLogger(__name__)
@@ -21,15 +22,18 @@ def append_order_to_sheet(order_data):
         return False
 
     try:
-        # Новый способ авторизации (без предупреждений)
         client = gspread.service_account_from_dict(GOOGLE_CREDENTIALS_INFO)
         logger.info("✅ Авторизация через service_account_from_dict успешна")
 
         sheet = client.open_by_key(ORDERS_SPREADSHEET_ID).sheet1
         logger.info("✅ Таблица открыта, выбран первый лист")
 
+        # Используем московское время (UTC+3)
+        moscow_tz = ZoneInfo("Europe/Moscow")
+        current_time = datetime.now(moscow_tz).strftime("%Y-%m-%d %H:%M:%S")
+
         row = [
-            datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            current_time,
             order_data["user_id"],
             order_data["user_name"],
             order_data.get("username", ""),
