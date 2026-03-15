@@ -17,17 +17,13 @@ import config
 # Инициализация БД при старте
 init_db()
 
-# Загружаем меню (синхронная обёртка для асинхронного использования)
 async def get_menu():
     try:
-        # load_menu_from_csv синхронная, но мы вызываем её в асинхронной функции – 
-        # для простоты оставим так, в будущем можно заменить на асинхронный HTTP-клиент
         return load_menu_from_csv(config.MENU_CSV_URL)
     except Exception as e:
         logging.error(f"Ошибка загрузки меню: {e}")
         return {}
 
-# Функция для загрузки меню и построения индекса товаров по ID (сохраняем в bot_data)
 async def load_menu_and_build_index(context: ContextTypes.DEFAULT_TYPE):
     menu = await get_menu()
     if not menu:
@@ -41,7 +37,6 @@ async def load_menu_and_build_index(context: ContextTypes.DEFAULT_TYPE):
     context.bot_data['items_by_id'] = items_by_id
     return menu
 
-# Форматирование списка товаров для отображения в категории
 def format_items_list(items):
     lines = []
     for item in items:
@@ -60,14 +55,12 @@ def format_items_list(items):
         lines.append(line)
     return "\n".join(lines)
 
-# Клавиатура категорий
 def categories_keyboard(menu):
     buttons = []
     for category in menu.keys():
         buttons.append([InlineKeyboardButton(category, callback_data=f"cat_{category}")])
     return InlineKeyboardMarkup(buttons)
 
-# Клавиатура товаров в категории (используем ID товара в callback_data)
 def items_keyboard(category, items):
     buttons = []
     for item in items:
@@ -75,7 +68,6 @@ def items_keyboard(category, items):
     buttons.append([InlineKeyboardButton("◀ Назад к категориям", callback_data="back_to_cats")])
     return InlineKeyboardMarkup(buttons)
 
-# Клавиатура после добавления в корзину
 def after_add_keyboard(category):
     buttons = [
         [InlineKeyboardButton(f"➕ Ещё из {category}", callback_data=f"cat_{category}")],
@@ -84,7 +76,6 @@ def after_add_keyboard(category):
     ]
     return InlineKeyboardMarkup(buttons)
 
-# Клавиатура корзины
 def cart_keyboard(user_id):
     cart = get_cart(user_id)
     if not cart:
@@ -97,7 +88,6 @@ def cart_keyboard(user_id):
     buttons.append([InlineKeyboardButton("✏️ Редактировать заказ", callback_data="edit_cart")])
     return InlineKeyboardMarkup(buttons)
 
-# Клавиатура редактирования позиции
 def edit_item_keyboard(item_name):
     buttons = [
         [InlineKeyboardButton("❌ Удалить из заказа", callback_data=f"delete_{item_name}")],
@@ -106,7 +96,6 @@ def edit_item_keyboard(item_name):
     ]
     return InlineKeyboardMarkup(buttons)
 
-# Старт – загружаем меню в bot_data
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     menu = context.bot_data.get('menu')
     if not menu:
@@ -120,7 +109,6 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
     return CHOOSING_CATEGORY
 
-# Основной обработчик inline-кнопок
 async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
@@ -177,7 +165,12 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             text += f"Цена: {item['price']}₽\n\n"
             text += f"_{item.get('description', '')}_\n\n"
             text += "Сколько добавить в заказ? (введите число)"
-            await query.edit_message_text(text, parse_mode='Markdown')
+
+            # Кнопка "Назад к категории"
+            back_button = InlineKeyboardButton("◀ Назад к категории", callback_data=f"cat_{category}")
+            keyboard = InlineKeyboardMarkup([[back_button]])
+
+            await query.edit_message_text(text, parse_mode='Markdown', reply_markup=keyboard)
             return ENTERING_QUANTITY
         else:
             await query.answer("Товар не найден", show_alert=True)
@@ -225,7 +218,6 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.edit_message_text("Неизвестная команда.")
         return ConversationHandler.END
 
-# Показать корзину
 async def show_cart(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     user_id = update.effective_user.id
@@ -246,7 +238,6 @@ async def show_cart(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
     return VIEW_CART
 
-# Показать корзину для редактирования
 async def show_cart_for_edit(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     user_id = update.effective_user.id
@@ -267,7 +258,6 @@ async def show_cart_for_edit(update: Update, context: ContextTypes.DEFAULT_TYPE)
     )
     return VIEW_CART
 
-# Обработка ввода количества (первый раз)
 async def quantity_received(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         qty = int(update.message.text)
@@ -296,7 +286,6 @@ async def quantity_received(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
     return CONFIRM_ADD
 
-# Обработка ввода нового количества при редактировании
 async def new_quantity_received(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         qty = int(update.message.text)
@@ -336,7 +325,6 @@ async def show_cart_after_edit(update: Update, context: ContextTypes.DEFAULT_TYP
     )
     return VIEW_CART
 
-# Оформление заказа
 async def checkout(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     user_id = update.effective_user.id
@@ -388,7 +376,10 @@ def main():
         states={
             CHOOSING_CATEGORY: [CallbackQueryHandler(button_handler)],
             CHOOSING_ITEM: [CallbackQueryHandler(button_handler)],
-            ENTERING_QUANTITY: [MessageHandler(filters.TEXT & ~filters.COMMAND, quantity_received)],
+            ENTERING_QUANTITY: [
+                MessageHandler(filters.TEXT & ~filters.COMMAND, quantity_received),
+                CallbackQueryHandler(button_handler)  # для кнопки "Назад"
+            ],
             CONFIRM_ADD: [CallbackQueryHandler(button_handler)],
             VIEW_CART: [CallbackQueryHandler(button_handler)],
             EDITING_CART: [CallbackQueryHandler(button_handler)],
