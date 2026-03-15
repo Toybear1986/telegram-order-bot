@@ -129,7 +129,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     data = query.data
-    logging.info(f"Глобальный/диалоговый button_handler: data={data}, user={update.effective_user.id}")
+    logging.info(f"BUTTON_HANDLER: data={data}, user={update.effective_user.id}")
     await query.answer()
 
     if data == "back_to_cats":
@@ -508,7 +508,10 @@ def main():
     )
 
     application.add_handler(conv_handler)
-    # application.add_handler(CallbackQueryHandler(button_handler))
+    # Глобальный обработчик для кнопки "Новый заказ" (back_to_cats)
+    application.add_handler(CallbackQueryHandler(button_handler, pattern="^back_to_cats$"))
+    # Остальные глобальные колбэки (на всякий случай)
+    application.add_handler(CallbackQueryHandler(button_handler))
 
     logging.basicConfig(level=logging.INFO)
     application.run_polling()
