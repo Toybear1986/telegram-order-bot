@@ -403,6 +403,9 @@ async def show_cart_for_edit(update: Update, context: ContextTypes.DEFAULT_TYPE)
     return VIEW_CART
 
 async def quantity_received(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    logging.info(f"===== quantity_received вызвана =====")
+    logging.info(f"Текст сообщения: {update.message.text}")
+    logging.info(f"user_data: {context.user_data}")
     try:
         qty = int(update.message.text)
         if qty <= 0:
