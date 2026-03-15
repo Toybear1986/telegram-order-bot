@@ -128,8 +128,9 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
-    await query.answer()
     data = query.data
+    logging.info(f"Глобальный/диалоговый button_handler: data={data}, user={update.effective_user.id}")
+    await query.answer()
 
     if data == "back_to_cats":
         menu = context.bot_data.get('menu')
