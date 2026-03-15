@@ -25,6 +25,27 @@ async def get_menu():
         logging.error(f"Ошибка загрузки меню: {e}")
         return {}
 
+#Добавляем новую функцию для форматирования списка товаров    
+def format_items_list(items):
+    """Формирует текст со списком товаров для отображения в категории"""
+    lines = []
+    for item in items:
+        name = item['name']
+        weight = item.get('weight', '')
+        price = item.get('price', 0)
+        desc = item.get('description', '')
+        # Обрезаем длинное описание
+        if len(desc) > 50:
+            desc = desc[:50] + '…'
+        line = f"• {name}"
+        if weight:
+            line += f" ({weight})"
+        line += f" — {price}₽"
+        if desc:
+            line += f"\n  _{desc}_"
+        lines.append(line)
+    return "\n".join(lines)
+
 # Клавиатура категорий
 def categories_keyboard(menu):
     buttons = []
@@ -110,12 +131,9 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await query.edit_message_text("В этой категории пока нет доступных позиций.")
             return CHOOSING_CATEGORY
         context.user_data['current_category'] = category
-        text = f"*{category}*\n\nВыберите позицию:"
-        await query.edit_message_text(
-            text,
-            parse_mode='Markdown',
-            reply_markup=items_keyboard(category, items)
-        )
+        items_text = format_items_list(items)
+        text = f"*{category}*\n\n{items_text}\n\nВыберите позицию:"
+        await query.edit_message_text(text, parse_mode='Markdown', reply_markup=items_keyboard(category, items))
         return CHOOSING_ITEM
 
     elif data.startswith("item_"):
@@ -139,10 +157,15 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             context.user_data['selected_item_obj'] = item
             # Можно сохранить и сам item, если нужны ещё данные (цена, описание)
             context.user_data['selected_item_id'] = item_id
-            await query.edit_message_text(
-                f"Сколько *{item['name']}* добавить в заказ? (введите число)",
-                parse_mode='Markdown'
-            )
+            # Показываем полную информацию о товаре
+            item_obj = context.user_data['selected_item_obj']
+            text = f"*{item_obj['name']}*\n"
+            if item_obj.get('weight'):
+                text += f"Вес: {item_obj['weight']}\n"
+            text += f"Цена: {item_obj['price']}₽\n\n"
+            text += f"_{item_obj.get('description', '')}_\n\n"
+            text += "Сколько добавить в заказ? (введите число)"
+            await query.edit_message_text(text, parse_mode='Markdown')
             return ENTERING_QUANTITY
         else:
             await query.answer("Товар не найден", show_alert=True)
