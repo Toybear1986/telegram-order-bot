@@ -36,7 +36,8 @@ def categories_keyboard(menu):
 def items_keyboard(category, items):
     buttons = []
     for item in items:
-        buttons.append([InlineKeyboardButton(item['name'], callback_data=f"item_{category}_{item['name']}")])
+        # Используем ID вместо названия
+        buttons.append([InlineKeyboardButton(item['name'], callback_data=f"item_{item['id']}")])
     buttons.append([InlineKeyboardButton("◀ Назад к категориям", callback_data="back_to_cats")])
     return InlineKeyboardMarkup(buttons)
 
@@ -118,17 +119,34 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return CHOOSING_ITEM
 
     elif data.startswith("item_"):
-        parts = data.split('_', 2)
-        category = parts[1]
-        item_name = parts[2]
-        context.user_data['selected_category'] = category
-        context.user_data['selected_item'] = item_name
-        # Запросить количество
-        await query.edit_message_text(
-            f"Сколько *{item_name}* добавить в заказ? (введите число)",
-            parse_mode='Markdown'
-        )
-        return ENTERING_QUANTITY
+        item_id = int(data.split('_')[1])
+        # Нужно найти товар по ID во всём меню
+        # Для этого можно заранее построить словарь id->(category, item)
+        if 'items_by_id' not in context.user_data:
+            # Построим при первом обращении
+            items_by_id = {}
+            for cat, items in context.user_data['menu'].items():
+                for itm in items:
+                    items_by_id[itm['id']] = (cat, itm)
+            context.user_data['items_by_id'] = items_by_id
+        else:
+            items_by_id = context.user_data['items_by_id']
+        
+        if item_id in items_by_id:
+            category, item = items_by_id[item_id]
+            context.user_data['selected_category'] = category
+            context.user_data['selected_item'] = item['name']
+            context.user_data['selected_item_obj'] = item
+            # Можно сохранить и сам item, если нужны ещё данные (цена, описание)
+            context.user_data['selected_item_id'] = item_id
+            await query.edit_message_text(
+                f"Сколько *{item['name']}* добавить в заказ? (введите число)",
+                parse_mode='Markdown'
+            )
+            return ENTERING_QUANTITY
+        else:
+            await query.answer("Товар не найден", show_alert=True)
+            return CHOOSING_CATEGORY
 
     elif data == "view_cart":
         return await show_cart(update, context)
@@ -224,22 +242,15 @@ async def quantity_received(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("Пожалуйста, введите положительное число.")
         return ENTERING_QUANTITY
 
-    category = context.user_data.get('selected_category')
-    item_name = context.user_data.get('selected_item')
-    menu = context.user_data.get('menu')
-    if not menu or category not in menu:
-        menu = await get_menu()
-        context.user_data['menu'] = menu
-
-    # Найти цену товара
-    price = None
-    for item in menu.get(category, []):
-        if item['name'] == item_name:
-            price = item['price']
-            break
-    if price is None:
-        await update.message.reply_text("Ошибка: товар не найден.")
+    # Получаем сохранённый объект товара
+    item_obj = context.user_data.get('selected_item_obj')
+    if not item_obj:
+        await update.message.reply_text("Ошибка: товар не найден. Начните заново.")
         return CHOOSING_CATEGORY
+
+    item_name = item_obj['name']
+    price = item_obj['price']
+    category = context.user_data.get('selected_category')  # можно и из item_obj, если у товара есть категория, но пока оставим так
 
     user_id = update.effective_user.id
     add_to_cart(user_id, item_name, qty, price)

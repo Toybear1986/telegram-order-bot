@@ -33,6 +33,7 @@ def load_menu_from_csv(url):
             except:
                 price = 0
             item = {
+                'id': int(row.get('ID', 0)),
                 'name': row.get('Название', '').strip(),
                 'description': row.get('Описание', '').strip(),
                 'weight': row.get('Вес', '').strip(),
