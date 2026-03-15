@@ -65,13 +65,13 @@ def items_keyboard(category, items):
     buttons = []
     for item in items:
         buttons.append([InlineKeyboardButton(item['name'], callback_data=f"item_{item['id']}")])
-    buttons.append([InlineKeyboardButton("◀ Назад к категориям", callback_data="back_to_cats")])
+    buttons.append([InlineKeyboardButton("◀ Назад в главное меню", callback_data="back_to_cats")])
     return InlineKeyboardMarkup(buttons)
 
 def after_add_keyboard(category):
     buttons = [
-        [InlineKeyboardButton(f"➕ Ещё из {category}", callback_data=f"cat_{category}")],
-        [InlineKeyboardButton("📋 Посмотреть меню", callback_data="back_to_cats")],
+        [InlineKeyboardButton(f"➕ Посмотреть еще раз {category}", callback_data=f"cat_{category}")],
+        [InlineKeyboardButton("📋 В главное меню", callback_data="back_to_cats")],
         [InlineKeyboardButton("🛒 Сделать/завершить заказ", callback_data="view_cart")]
     ]
     return InlineKeyboardMarkup(buttons)
@@ -104,7 +104,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("Меню временно недоступно. Попробуйте позже.")
         return ConversationHandler.END
     await update.message.reply_text(
-        "Добро пожаловать! Выберите категорию:",
+        "Добро пожаловать в меню мероприятия \"Пар да Мёд\"! Выберите:",
         reply_markup=categories_keyboard(menu)
     )
     return CHOOSING_CATEGORY
@@ -131,11 +131,11 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             menu = await load_menu_and_build_index(context)
         items = menu.get(category, [])
         if not items:
-            await query.edit_message_text("В этой категории пока нет доступных позиций.")
+            await query.edit_message_text("Здесь пока ничего нет, но мы уже работаем над этим")
             return CHOOSING_CATEGORY
         context.user_data['current_category'] = category
         items_text = format_items_list(items)
-        text = f"*{category}*\n\n{items_text}\n\nВыберите позицию:"
+        text = f"*{category}*\n\n{items_text}\n\nЧто вас заинтересовало?"
         await query.edit_message_text(text, parse_mode='Markdown', reply_markup=items_keyboard(category, items))
         return CHOOSING_ITEM
 
@@ -166,8 +166,8 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             text += f"_{item.get('description', '')}_\n\n"
             text += "Сколько добавить в заказ? (введите число)"
 
-            # Кнопка "Назад к категории"
-            back_button = InlineKeyboardButton("◀ Назад к категории", callback_data=f"cat_{category}")
+            # Кнопка "Назад к списку"
+            back_button = InlineKeyboardButton("◀ Назад к списку", callback_data=f"cat_{category}")
             keyboard = InlineKeyboardMarkup([[back_button]])
 
             await query.edit_message_text(text, parse_mode='Markdown', reply_markup=keyboard)
