@@ -77,7 +77,7 @@ def after_add_keyboard(category):
     buttons = [
         [InlineKeyboardButton(f"➕ Посмотреть еще раз {category}", callback_data=f"cat_{category}")],
         [InlineKeyboardButton("📋 В главное меню", callback_data="back_to_cats")],
-        [InlineKeyboardButton("🛒 Сделать/завершить заказ", callback_data="view_cart")]
+        [InlineKeyboardButton("🛒 Перейти в корзину", callback_data="view_cart")]
     ]
     return InlineKeyboardMarkup(buttons)
 
@@ -183,7 +183,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 text += f"Вес: {item['weight']}\n"
             text += f"Цена: {item['price']}₽\n\n"
             text += f"_{item.get('description', '')}_\n\n"
-            text += "Сколько добавить в заказ? (введите число)"
+            text += "Сколько добавить в корзину? (введите число)"
 
             # Формируем клавиатуру: всегда есть кнопка "Назад к списку"
             back_button = InlineKeyboardButton("◀ Назад к списку", callback_data=f"cat_{category}")
