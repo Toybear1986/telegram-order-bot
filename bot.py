@@ -12,7 +12,7 @@ import config
 
 # Состояния для FSM
 (CHOOSING_CATEGORY, CHOOSING_ITEM, ENTERING_QUANTITY, CONFIRM_ADD,
- VIEW_CART, EDITING_CART, CHOOSING_EDIT_ACTION, ENTERING_NEW_QUANTITY) = range(8)
+ VIEW_CART, EDITING_CART, CHOOSING_EDIT_ACTION, ENTERING_NEW_QUANTITY, ENTERING_COMMENT) = range(9)
 
 # Инициализация БД при старте
 init_db()
@@ -77,7 +77,7 @@ def after_add_keyboard(category):
     buttons = [
         [InlineKeyboardButton(f"➕ Посмотреть еще раз {category}", callback_data=f"cat_{category}")],
         [InlineKeyboardButton("📋 В главное меню", callback_data="back_to_cats")],
-        [InlineKeyboardButton("🛒 Перейти в корзину", callback_data="view_cart")]
+        [InlineKeyboardButton("🛒 Сделать/завершить заказ", callback_data="view_cart")]
     ]
     return InlineKeyboardMarkup(buttons)
 
@@ -99,6 +99,18 @@ def edit_item_keyboard(item_name):
         [InlineKeyboardButton("✏️ Изменить количество", callback_data=f"change_qty_{item_name}")],
         [InlineKeyboardButton("◀ Назад", callback_data="back_to_cart")]
     ]
+    return InlineKeyboardMarkup(buttons)
+
+# Предварительная клавиатура для подтверждения заказа
+def pre_checkout_keyboard(has_comment):
+    buttons = [
+        [InlineKeyboardButton("✅ Подтвердить заказ", callback_data="confirm_order")],
+        [InlineKeyboardButton("💬 Добавить комментарий", callback_data="add_comment")]
+    ]
+    # Если комментарий уже есть, можно показать его в тексте, но кнопка всё равно нужна для редактирования
+    if has_comment:
+        buttons.append([InlineKeyboardButton("✏️ Изменить комментарий", callback_data="add_comment")])
+    buttons.append([InlineKeyboardButton("📋 В меню", callback_data="back_to_cats")])
     return InlineKeyboardMarkup(buttons)
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -183,7 +195,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 text += f"Вес: {item['weight']}\n"
             text += f"Цена: {item['price']}₽\n\n"
             text += f"_{item.get('description', '')}_\n\n"
-            text += "Сколько добавить в корзину? (введите число)"
+            text += "Сколько добавить в заказ? (введите число)"
 
             # Формируем клавиатуру: всегда есть кнопка "Назад к списку"
             back_button = InlineKeyboardButton("◀ Назад к списку", callback_data=f"cat_{category}")
@@ -237,11 +249,118 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return await show_cart(update, context)
 
     elif data == "checkout":
-        return await checkout(update, context)
+        # Переходим к предварительному оформлению
+        return await pre_checkout(update, context)
+
+    elif data == "add_comment":
+        await query.edit_message_text(
+            "Введите ваш комментарий к заказу:"
+        )
+        return ENTERING_COMMENT
+
+    elif data == "confirm_order":
+        return await confirm_order(update, context)
 
     else:
         await query.edit_message_text("Неизвестная команда.")
         return ConversationHandler.END
+
+async def pre_checkout(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Показывает предварительный экран с корзиной и опцией добавления комментария."""
+    query = update.callback_query
+    user_id = update.effective_user.id
+    cart = get_cart(user_id)
+    if not cart:
+        await query.edit_message_text("Корзина пуста. Добавьте товары.")
+        return CHOOSING_CATEGORY
+
+    total = sum(qty * price for _, qty, price in cart)
+    lines = [f"{name} x{qty} — {qty*price}₽" for name, qty, price in cart]
+    items_str = "\n".join(lines)
+
+    # Проверяем, есть ли уже сохранённый комментарий
+    comment = context.user_data.get('order_comment', '')
+    comment_text = f"\n\n💬 Комментарий: {comment}" if comment else ""
+
+    text = f"Ваш заказ:\n\n{items_str}\n\n*Итого: {total}₽*{comment_text}"
+
+    has_comment = bool(comment)
+    await query.edit_message_text(
+        text,
+        parse_mode='Markdown',
+        reply_markup=pre_checkout_keyboard(has_comment)
+    )
+    # Остаёмся в состоянии VIEW_CART, чтобы потом можно было вернуться
+    return VIEW_CART
+
+async def comment_received(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Получает текст комментария и возвращается к предварительному оформлению."""
+    comment = update.message.text
+    context.user_data['order_comment'] = comment
+
+    # Возвращаемся к предварительному экрану, создавая новый callback_query
+    # Для этого эмулируем вызов pre_checkout с новым сообщением
+    user_id = update.effective_user.id
+    cart = get_cart(user_id)
+    total = sum(qty * price for _, qty, price in cart)
+    lines = [f"{name} x{qty} — {qty*price}₽" for name, qty, price in cart]
+    items_str = "\n".join(lines)
+
+    text = f"Ваш заказ:\n\n{items_str}\n\n*Итого: {total}₽*\n\n💬 Комментарий: {comment}"
+
+    await update.message.reply_text(
+        text,
+        parse_mode='Markdown',
+        reply_markup=pre_checkout_keyboard(True)
+    )
+    return VIEW_CART
+
+async def confirm_order(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Финальное подтверждение заказа – сохранение в БД и Google Sheets."""
+    query = update.callback_query
+    user_id = update.effective_user.id
+    cart = get_cart(user_id)
+    if not cart:
+        await query.edit_message_text("Корзина пуста. Добавьте товары.")
+        return CHOOSING_CATEGORY
+
+    total = sum(qty * price for _, qty, price in cart)
+    lines = [f"{name} x{qty} — {qty*price}₽" for name, qty, price in cart]
+    items_str = "\n".join(lines)
+
+    user = update.effective_user
+    user_name = user.full_name or user.username or str(user.id)
+    username = user.username or ""  # может быть None
+    comment = context.user_data.get('order_comment', '')
+
+    # Сохраняем в локальную БД
+    order_id = save_order_to_db(user_id, user_name, items_str, total, comment)
+
+    order_data = {
+        "user_id": user_id,
+        "user_name": user_name,
+        "username": username,
+        "items_str": items_str,
+        "total_amount": total,
+        "comment": comment
+    }
+    sheet_ok = append_order_to_sheet(order_data)
+
+    # Очищаем корзину и временные данные
+    clear_cart(user_id)
+    context.user_data.pop('order_comment', None)
+
+    if sheet_ok:
+        await query.edit_message_text(
+            f"✅ Заказ №{order_id} оформлен!\n\n{items_str}\n\nИтого: {total}₽\n\nСпасибо! Оплата наличными при получении.",
+            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("📋 Новый заказ", callback_data="back_to_cats")]])
+        )
+    else:
+        await query.edit_message_text(
+            f"⚠️ Заказ №{order_id} сохранён локально, но возникла проблема с записью в Google Sheets. Мы уже работаем над этим.\n\n{items_str}\n\nИтого: {total}₽",
+            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("📋 В меню", callback_data="back_to_cats")]])
+        )
+    return ConversationHandler.END
 
 async def show_cart(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -350,45 +469,6 @@ async def show_cart_after_edit(update: Update, context: ContextTypes.DEFAULT_TYP
     )
     return VIEW_CART
 
-async def checkout(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    user_id = update.effective_user.id
-    cart = get_cart(user_id)
-    if not cart:
-        await query.edit_message_text("Корзина пуста. Добавьте товары.")
-        return CHOOSING_CATEGORY
-
-    total = sum(qty * price for _, qty, price in cart)
-    lines = [f"{name} x{qty} — {qty*price}₽" for name, qty, price in cart]
-    items_str = "\n".join(lines)
-
-    user = update.effective_user
-    user_name = user.full_name or user.username or str(user.id)
-    order_id = save_order_to_db(user_id, user_name, items_str, total, "")
-
-    order_data = {
-        "user_id": user_id,
-        "user_name": user_name,
-        "items_str": items_str,
-        "total_amount": total,
-        "comment": ""
-    }
-    sheet_ok = append_order_to_sheet(order_data)
-
-    clear_cart(user_id)
-
-    if sheet_ok:
-        await query.edit_message_text(
-            f"✅ Заказ №{order_id} оформлен!\n\n{items_str}\n\nИтого: {total}₽\n\nСпасибо! Оплата наличными при получении.",
-            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("📋 Новый заказ", callback_data="back_to_cats")]])
-        )
-    else:
-        await query.edit_message_text(
-            f"⚠️ Заказ №{order_id} сохранён локально, но возникла проблема с записью в Google Sheets. Мы уже работаем над этим.\n\n{items_str}\n\nИтого: {total}₽",
-            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("📋 В меню", callback_data="back_to_cats")]])
-        )
-    return ConversationHandler.END
-
 async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("Действие отменено.")
     return ConversationHandler.END
@@ -409,6 +489,7 @@ def main():
             VIEW_CART: [CallbackQueryHandler(button_handler)],
             EDITING_CART: [CallbackQueryHandler(button_handler)],
             ENTERING_NEW_QUANTITY: [MessageHandler(filters.TEXT & ~filters.COMMAND, new_quantity_received)],
+            ENTERING_COMMENT: [MessageHandler(filters.TEXT & ~filters.COMMAND, comment_received)],
         },
         fallbacks=[CommandHandler("cancel", cancel)],
     )
