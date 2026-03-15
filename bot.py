@@ -424,16 +424,16 @@ async def quantity_received(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not item_obj:
         await update.message.reply_text("Ошибка: товар не найден. Начните заново.")
         return CHOOSING_CATEGORY
-    
-    logging.info(f"Всё ок, сейчас вызову add_to_cart для {item_name}")
 
     item_name = item_obj['name']
     price = item_obj['price']
     category = context.user_data.get('selected_category')
 
+    # Логирование после определения переменной
+    logging.info(f"Всё ок, сейчас вызову add_to_cart для {item_name}")
+
     user_id = update.effective_user.id
-    # add_to_cart(user_id, item_name, qty, price)
-    await update.message.reply_text(f"Тест: {item_name} x{qty}")
+    add_to_cart(user_id, item_name, qty, price)
 
     keyboard = after_add_keyboard(category)
     await update.message.reply_text(
