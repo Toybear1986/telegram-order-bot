@@ -278,7 +278,11 @@ async def pre_checkout(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     cart = get_cart(user_id)
     if not cart:
-        await query.edit_message_text("Корзина пуста. Добавьте товары.")
+        keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("📋 В главное меню", callback_data="back_to_cats")]])
+        await query.edit_message_text(
+            "Корзина пуста. Добавьте товары.",
+            reply_markup=keyboard
+        )
         return CHOOSING_CATEGORY
 
     total = sum(qty * price for _, qty, price in cart)
@@ -328,7 +332,11 @@ async def confirm_order(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     cart = get_cart(user_id)
     if not cart:
-        await query.edit_message_text("Корзина пуста. Добавьте товары.")
+        keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("📋 В главное меню", callback_data="back_to_cats")]])
+        await query.edit_message_text(
+            "Корзина пуста. Добавьте товары.",
+            reply_markup=keyboard
+        )
         return CHOOSING_CATEGORY
 
     total = sum(qty * price for _, qty, price in cart)
