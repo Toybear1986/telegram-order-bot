@@ -213,6 +213,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 keyboard = InlineKeyboardMarkup([[back_button]])
 
             await query.edit_message_text(text, parse_mode='Markdown', reply_markup=keyboard)
+            logging.info(f"Переходим в состояние ENTERING_QUANTITY для user {update.effective_user.id}")
             return ENTERING_QUANTITY
         else:
             await query.answer("Товар не найден", show_alert=True)
@@ -423,13 +424,16 @@ async def quantity_received(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not item_obj:
         await update.message.reply_text("Ошибка: товар не найден. Начните заново.")
         return CHOOSING_CATEGORY
+    
+    logging.info(f"Всё ок, сейчас вызову add_to_cart для {item_name}")
 
     item_name = item_obj['name']
     price = item_obj['price']
     category = context.user_data.get('selected_category')
 
     user_id = update.effective_user.id
-    add_to_cart(user_id, item_name, qty, price)
+    # add_to_cart(user_id, item_name, qty, price)
+    await update.message.reply_text(f"Тест: {item_name} x{qty}")
 
     keyboard = after_add_keyboard(category)
     await update.message.reply_text(
@@ -503,7 +507,7 @@ def main():
     )
 
     application.add_handler(conv_handler)
-    application.add_handler(CallbackQueryHandler(button_handler))
+    # application.add_handler(CallbackQueryHandler(button_handler))
 
     logging.basicConfig(level=logging.INFO)
     application.run_polling()
