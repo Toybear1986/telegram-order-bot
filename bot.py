@@ -17,24 +17,38 @@ import config
 # Инициализация БД при старте
 init_db()
 
-# Загружаем меню (можно кешировать, но при каждом запросе лучше перезагружать для актуальности)
+# Загружаем меню (синхронная обёртка для асинхронного использования)
 async def get_menu():
     try:
+        # load_menu_from_csv синхронная, но мы вызываем её в асинхронной функции – 
+        # для простоты оставим так, в будущем можно заменить на асинхронный HTTP-клиент
         return load_menu_from_csv(config.MENU_CSV_URL)
     except Exception as e:
         logging.error(f"Ошибка загрузки меню: {e}")
         return {}
 
-#Добавляем новую функцию для форматирования списка товаров    
+# Функция для загрузки меню и построения индекса товаров по ID (сохраняем в bot_data)
+async def load_menu_and_build_index(context: ContextTypes.DEFAULT_TYPE):
+    menu = await get_menu()
+    if not menu:
+        return None
+    items_by_id = {}
+    for cat, items in menu.items():
+        for itm in items:
+            if 'id' in itm:
+                items_by_id[itm['id']] = (cat, itm)
+    context.bot_data['menu'] = menu
+    context.bot_data['items_by_id'] = items_by_id
+    return menu
+
+# Форматирование списка товаров для отображения в категории
 def format_items_list(items):
-    """Формирует текст со списком товаров для отображения в категории"""
     lines = []
     for item in items:
         name = item['name']
         weight = item.get('weight', '')
         price = item.get('price', 0)
         desc = item.get('description', '')
-        # Обрезаем длинное описание
         if len(desc) > 50:
             desc = desc[:50] + '…'
         line = f"• {name}"
@@ -53,16 +67,15 @@ def categories_keyboard(menu):
         buttons.append([InlineKeyboardButton(category, callback_data=f"cat_{category}")])
     return InlineKeyboardMarkup(buttons)
 
-# Клавиатура товаров в категории
+# Клавиатура товаров в категории (используем ID товара в callback_data)
 def items_keyboard(category, items):
     buttons = []
     for item in items:
-        # Используем ID вместо названия
         buttons.append([InlineKeyboardButton(item['name'], callback_data=f"item_{item['id']}")])
     buttons.append([InlineKeyboardButton("◀ Назад к категориям", callback_data="back_to_cats")])
     return InlineKeyboardMarkup(buttons)
 
-# Клавиатура для действий после добавления в корзину
+# Клавиатура после добавления в корзину
 def after_add_keyboard(category):
     buttons = [
         [InlineKeyboardButton(f"➕ Ещё из {category}", callback_data=f"cat_{category}")],
@@ -93,27 +106,30 @@ def edit_item_keyboard(item_name):
     ]
     return InlineKeyboardMarkup(buttons)
 
-# Старт
+# Старт – загружаем меню в bot_data
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    menu = await get_menu()
+    menu = context.bot_data.get('menu')
+    if not menu:
+        menu = await load_menu_and_build_index(context)
     if not menu:
         await update.message.reply_text("Меню временно недоступно. Попробуйте позже.")
         return ConversationHandler.END
-    context.user_data['menu'] = menu
     await update.message.reply_text(
         "Добро пожаловать! Выберите категорию:",
         reply_markup=categories_keyboard(menu)
     )
     return CHOOSING_CATEGORY
 
-# Обработка нажатий на кнопки (callback_query)
+# Основной обработчик inline-кнопок
 async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
     data = query.data
 
     if data == "back_to_cats":
-        menu = await get_menu()
+        menu = context.bot_data.get('menu')
+        if not menu:
+            menu = await load_menu_and_build_index(context)
         await query.edit_message_text(
             "Выберите категорию:",
             reply_markup=categories_keyboard(menu)
@@ -122,10 +138,9 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     elif data.startswith("cat_"):
         category = data[4:]
-        menu = context.user_data.get('menu')
-        if not menu or category not in menu:
-            menu = await get_menu()
-            context.user_data['menu'] = menu
+        menu = context.bot_data.get('menu')
+        if not menu:
+            menu = await load_menu_and_build_index(context)
         items = menu.get(category, [])
         if not items:
             await query.edit_message_text("В этой категории пока нет доступных позиций.")
@@ -137,33 +152,30 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return CHOOSING_ITEM
 
     elif data.startswith("item_"):
-        item_id = int(data.split('_')[1])
-        # Нужно найти товар по ID во всём меню
-        # Для этого можно заранее построить словарь id->(category, item)
-        if 'items_by_id' not in context.user_data:
-            # Построим при первом обращении
-            items_by_id = {}
-            for cat, items in context.user_data['menu'].items():
-                for itm in items:
-                    items_by_id[itm['id']] = (cat, itm)
-            context.user_data['items_by_id'] = items_by_id
-        else:
-            items_by_id = context.user_data['items_by_id']
-        
+        try:
+            item_id = int(data.split('_')[1])
+        except:
+            await query.answer("Ошибка в данных кнопки", show_alert=True)
+            return CHOOSING_CATEGORY
+
+        items_by_id = context.bot_data.get('items_by_id')
+        if not items_by_id:
+            await load_menu_and_build_index(context)
+            items_by_id = context.bot_data.get('items_by_id')
+            if not items_by_id:
+                await query.edit_message_text("Ошибка загрузки меню. Попробуйте позже.")
+                return ConversationHandler.END
+
         if item_id in items_by_id:
             category, item = items_by_id[item_id]
             context.user_data['selected_category'] = category
-            context.user_data['selected_item'] = item['name']
             context.user_data['selected_item_obj'] = item
-            # Можно сохранить и сам item, если нужны ещё данные (цена, описание)
-            context.user_data['selected_item_id'] = item_id
-            # Показываем полную информацию о товаре
-            item_obj = context.user_data['selected_item_obj']
-            text = f"*{item_obj['name']}*\n"
-            if item_obj.get('weight'):
-                text += f"Вес: {item_obj['weight']}\n"
-            text += f"Цена: {item_obj['price']}₽\n\n"
-            text += f"_{item_obj.get('description', '')}_\n\n"
+
+            text = f"*{item['name']}*\n"
+            if item.get('weight'):
+                text += f"Вес: {item['weight']}\n"
+            text += f"Цена: {item['price']}₽\n\n"
+            text += f"_{item.get('description', '')}_\n\n"
             text += "Сколько добавить в заказ? (введите число)"
             await query.edit_message_text(text, parse_mode='Markdown')
             return ENTERING_QUANTITY
@@ -190,7 +202,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif data.startswith("delete_"):
         item_name = data[7:]
         user_id = update.effective_user.id
-        update_cart_quantity(user_id, item_name, 0)  # удалить
+        update_cart_quantity(user_id, item_name, 0)
         await query.answer(f"{item_name} удалён")
         return await show_cart(update, context)
 
@@ -234,7 +246,7 @@ async def show_cart(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
     return VIEW_CART
 
-# Показать корзину для редактирования (то же, но с акцентом)
+# Показать корзину для редактирования
 async def show_cart_for_edit(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     user_id = update.effective_user.id
@@ -265,7 +277,6 @@ async def quantity_received(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("Пожалуйста, введите положительное число.")
         return ENTERING_QUANTITY
 
-    # Получаем сохранённый объект товара
     item_obj = context.user_data.get('selected_item_obj')
     if not item_obj:
         await update.message.reply_text("Ошибка: товар не найден. Начните заново.")
@@ -273,12 +284,11 @@ async def quantity_received(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     item_name = item_obj['name']
     price = item_obj['price']
-    category = context.user_data.get('selected_category')  # можно и из item_obj, если у товара есть категория, но пока оставим так
+    category = context.user_data.get('selected_category')
 
     user_id = update.effective_user.id
     add_to_cart(user_id, item_name, qty, price)
 
-    # Предложить дальнейшие действия
     keyboard = after_add_keyboard(category)
     await update.message.reply_text(
         f"Добавлено: {item_name} x{qty}",
@@ -305,7 +315,6 @@ async def new_quantity_received(update: Update, context: ContextTypes.DEFAULT_TY
     else:
         await update.message.reply_text(f"Количество {item_name} изменено на {qty}.")
 
-    # Показываем обновлённую корзину
     return await show_cart_after_edit(update, context)
 
 async def show_cart_after_edit(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -340,12 +349,10 @@ async def checkout(update: Update, context: ContextTypes.DEFAULT_TYPE):
     lines = [f"{name} x{qty} — {qty*price}₽" for name, qty, price in cart]
     items_str = "\n".join(lines)
 
-    # Сохраняем в локальную БД
     user = update.effective_user
     user_name = user.full_name or user.username or str(user.id)
     order_id = save_order_to_db(user_id, user_name, items_str, total, "")
 
-    # Сохраняем в Google Sheets
     order_data = {
         "user_id": user_id,
         "user_name": user_name,
@@ -355,7 +362,6 @@ async def checkout(update: Update, context: ContextTypes.DEFAULT_TYPE):
     }
     sheet_ok = append_order_to_sheet(order_data)
 
-    # Очищаем корзину
     clear_cart(user_id)
 
     if sheet_ok:
@@ -370,12 +376,10 @@ async def checkout(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
     return ConversationHandler.END
 
-# Отмена
 async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("Действие отменено.")
     return ConversationHandler.END
 
-# Основная функция запуска
 def main():
     application = Application.builder().token(BOT_TOKEN).build()
 
@@ -394,7 +398,6 @@ def main():
     )
 
     application.add_handler(conv_handler)
-    # Добавляем обработчик для кнопок, которые могут прийти вне состояний (например, после /start)
     application.add_handler(CallbackQueryHandler(button_handler))
 
     logging.basicConfig(level=logging.INFO)
