@@ -121,7 +121,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("Меню временно недоступно. Попробуйте позже.")
         return ConversationHandler.END
     await update.message.reply_text(
-        "Добро пожаловать в меню мероприятия \"Пар да Мёд\"! Выберайте:",
+        "Добро пожаловать в меню мероприятия \"Пар да Мёд\"! Выбирайте:",
         reply_markup=categories_keyboard(menu)
     )
     return CHOOSING_CATEGORY
@@ -147,7 +147,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             new_buttons.append([InlineKeyboardButton("🛒 Перейти в корзину", callback_data="view_cart")])
         reply_markup = InlineKeyboardMarkup(new_buttons)
         await query.edit_message_text(
-            "Выберайте:",
+            "Выбирайте:",
             reply_markup=reply_markup
         )
         return CHOOSING_CATEGORY
