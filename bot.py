@@ -77,7 +77,7 @@ def after_add_keyboard(category):
     buttons = [
         [InlineKeyboardButton(f"➕ Посмотреть еще раз {category}", callback_data=f"cat_{category}")],
         [InlineKeyboardButton("📋 В главное меню", callback_data="back_to_cats")],
-        [InlineKeyboardButton("🛒 Сделать/завершить заказ", callback_data="view_cart")]
+        [InlineKeyboardButton("🛒 Перейти в корзину", callback_data="view_cart")]
     ]
     return InlineKeyboardMarkup(buttons)
 
