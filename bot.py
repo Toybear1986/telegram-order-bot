@@ -337,10 +337,9 @@ async def confirm_order(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     user = update.effective_user
     user_name = user.full_name or user.username or str(user.id)
-    username = user.username or ""  # может быть None
+    username = user.username or ""
     comment = context.user_data.get('order_comment', '')
 
-    # Сохраняем в локальную БД
     order_id = save_order_to_db(user_id, user_name, items_str, total, comment)
 
     order_data = {
@@ -353,21 +352,24 @@ async def confirm_order(update: Update, context: ContextTypes.DEFAULT_TYPE):
     }
     sheet_ok = append_order_to_sheet(order_data)
 
-    # Очищаем корзину и временные данные
     clear_cart(user_id)
     context.user_data.pop('order_comment', None)
 
+    # Показываем главное меню
+    menu = context.bot_data.get('menu')
+    if not menu:
+        menu = await load_menu_and_build_index(context)
     if sheet_ok:
         await query.edit_message_text(
-            f"✅ Заказ №{order_id} оформлен!\n\n{items_str}\n\nИтого: {total}₽\n\nСпасибо! Оплата наличными при получении.",
-            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("📋 Новый заказ", callback_data="back_to_cats")]])
+            f"✅ Заказ №{order_id} оформлен!\n\n{items_str}\n\nИтого: {total}₽\n\nСпасибо!",
+            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("📋 В главное меню", callback_data="back_to_cats")]])
         )
     else:
         await query.edit_message_text(
-            f"⚠️ Заказ №{order_id} сохранён локально, но возникла проблема с записью в Google Sheets. Мы уже работаем над этим.\n\n{items_str}\n\nИтого: {total}₽",
-            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("📋 В меню", callback_data="back_to_cats")]])
+            f"⚠️ Заказ №{order_id} сохранён локально, но возникла проблема с записью в Google Sheets.\n\n{items_str}\n\nИтого: {total}₽",
+            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("📋 В главное меню", callback_data="back_to_cats")]])
         )
-    return ConversationHandler.END
+    return CHOOSING_CATEGORY
 
 async def show_cart(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -508,10 +510,6 @@ def main():
     )
 
     application.add_handler(conv_handler)
-    # Глобальный обработчик для кнопки "Новый заказ" (back_to_cats)
-    application.add_handler(CallbackQueryHandler(button_handler, pattern="^back_to_cats$"))
-    # Остальные глобальные колбэки (на всякий случай)
-    application.add_handler(CallbackQueryHandler(button_handler))
 
     logging.basicConfig(level=logging.INFO)
     application.run_polling()
