@@ -3,7 +3,7 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-DB_NAME = 'orders.db'
+DB_NAME = '/data/orders.db'
 
 def init_db():
     """Создаёт таблицы, если их нет"""
