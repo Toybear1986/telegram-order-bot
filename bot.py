@@ -203,15 +203,18 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             text += f"_{item.get('description', '')}_\n\n"
             text += "Сколько добавить в заказ? (введите число)"
 
-            # Формируем клавиатуру: всегда есть кнопка "Назад к списку"
-            back_button = InlineKeyboardButton("◀ Назад к списку", callback_data=f"cat_{category}")
+            # Формируем список кнопок
+            buttons = [[InlineKeyboardButton("◀ Назад к списку", callback_data=f"cat_{category}")]]
+
+            # Если в описании есть фраза про акции, добавляем кнопку "Акции"
+            if "Обратите так же внимание на выгодные акции" in item.get('description', ''):
+                buttons.append([InlineKeyboardButton("🔥 Акции", callback_data="cat_Акции")])
+
             # Если корзина не пуста, добавляем кнопку "Перейти в корзину"
-            cart = get_cart(update.effective_user.id)
             if cart:
-                checkout_button = InlineKeyboardButton("🛒 Перейти в корзину", callback_data="view_cart")
-                keyboard = InlineKeyboardMarkup([[back_button], [checkout_button]])
-            else:
-                keyboard = InlineKeyboardMarkup([[back_button]])
+                buttons.append([InlineKeyboardButton("🛒 Перейти в корзину", callback_data="view_cart")])
+
+            keyboard = InlineKeyboardMarkup(buttons)
 
             await query.edit_message_text(text, parse_mode='Markdown', reply_markup=keyboard)
             logging.info(f"Переходим в состояние ENTERING_QUANTITY для user {update.effective_user.id}")
