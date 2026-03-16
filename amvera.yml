@@ -1,5 +1,3 @@
-deploy:
-    branch: amvera-deploy
 meta:
   environment: python
   toolchain:
