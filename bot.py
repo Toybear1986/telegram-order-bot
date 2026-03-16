@@ -332,28 +332,31 @@ async def comment_received(update: Update, context: ContextTypes.DEFAULT_TYPE):
     return VIEW_CART
 
 async def send_order_notification(context: ContextTypes.DEFAULT_TYPE, order_data: dict, order_id: int, sheet_ok: bool):
-    """Отправляет уведомление о новом заказе в группу."""
+    """Отправляет уведомление о новом заказе в группу (HTML)."""
     if not GROUP_CHAT_ID:
         return
 
-    # Формируем ссылку на таблицу
     sheet_url = f"https://docs.google.com/spreadsheets/d/{config.ORDERS_SPREADSHEET_ID}/edit"
 
-    # Текст уведомления
+    # Экранируем только самые необходимые символы (если появятся <, >, &)
+    import html
+    safe_items_str = html.escape(order_data['items_str'])
+    safe_comment = html.escape(order_data['comment']) if order_data['comment'] else ""
+
     text = (
-        f"🆕 *Новый заказ №{order_id}*\n"
-        f"👤 *Пользователь:* {order_data['user_name']}\n"
-        f"🆔 *ID:* {order_data['user_id']}\n"
-        f"📱 *Username:* @{order_data['username']}\n"
-        f"📋 *Состав заказа:*\n{order_data['items_str']}\n"
-        f"💰 *Сумма:* {order_data['total_amount']}₽\n"
+        f"<b>🆕 Новый заказ №{order_id}</b>\n"
+        f"<b>👤 Пользователь:</b> {order_data['user_name']}\n"
+        f"<b>🆔 ID:</b> {order_data['user_id']}\n"
+        f"<b>📱 Username:</b> @{order_data['username']}\n"
+        f"<b>📋 Состав заказа:</b>\n{safe_items_str}\n"
+        f"<b>💰 Сумма:</b> {order_data['total_amount']}₽\n"
     )
-    if order_data['comment']:
-        text += f"💬 *Комментарий:* {order_data['comment']}\n"
-    text += f"\n🔗 [Открыть таблицу]({sheet_url})"
+    if safe_comment:
+        text += f"<b>💬 Комментарий:</b> {safe_comment}\n"
+    text += f"\n🔗 <a href='{sheet_url}'>Открыть таблицу</a>"
 
     try:
-        await context.bot.send_message(chat_id=GROUP_CHAT_ID, text=text, parse_mode='Markdown')
+        await context.bot.send_message(chat_id=GROUP_CHAT_ID, text=text, parse_mode='HTML')
         logging.info(f"Уведомление о заказе №{order_id} отправлено в группу {GROUP_CHAT_ID}")
     except Exception as e:
         logging.error(f"Не удалось отправить уведомление в группу: {e}")
