@@ -195,6 +195,8 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             category, item = items_by_id[item_id]
             context.user_data['selected_category'] = category
             context.user_data['selected_item_obj'] = item
+            
+            cart = get_cart(update.effective_user.id)
 
             text = f"*{item['name']}*\n"
             if item.get('weight'):
