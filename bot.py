@@ -4,7 +4,7 @@ from telegram.ext import (
     Application, CommandHandler, CallbackQueryHandler, MessageHandler,
     filters, ContextTypes, ConversationHandler
 )
-from config import BOT_TOKEN, ADMIN_CHAT_ID
+from config import BOT_TOKEN, ADMIN_CHAT_ID, GROUP_CHAT_ID
 from database import init_db, add_to_cart, get_cart, update_cart_quantity, clear_cart, save_order_to_db
 from menu import load_menu_from_csv
 from sheets import append_order_to_sheet
@@ -331,6 +331,33 @@ async def comment_received(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
     return VIEW_CART
 
+async def send_order_notification(context: ContextTypes.DEFAULT_TYPE, order_data: dict, order_id: int, sheet_ok: bool):
+    """Отправляет уведомление о новом заказе в группу."""
+    if not GROUP_CHAT_ID:
+        return
+
+    # Формируем ссылку на таблицу
+    sheet_url = f"https://docs.google.com/spreadsheets/d/{config.ORDERS_SPREADSHEET_ID}/edit"
+
+    # Текст уведомления
+    text = (
+        f"🆕 *Новый заказ №{order_id}*\n"
+        f"👤 *Пользователь:* {order_data['user_name']}\n"
+        f"🆔 *ID:* {order_data['user_id']}\n"
+        f"📱 *Username:* @{order_data['username']}\n"
+        f"📋 *Состав заказа:*\n{order_data['items_str']}\n"
+        f"💰 *Сумма:* {order_data['total_amount']}₽\n"
+    )
+    if order_data['comment']:
+        text += f"💬 *Комментарий:* {order_data['comment']}\n"
+    text += f"\n🔗 [Открыть таблицу]({sheet_url})"
+
+    try:
+        await context.bot.send_message(chat_id=GROUP_CHAT_ID, text=text, parse_mode='Markdown')
+        logging.info(f"Уведомление о заказе №{order_id} отправлено в группу {GROUP_CHAT_ID}")
+    except Exception as e:
+        logging.error(f"Не удалось отправить уведомление в группу: {e}")
+
 async def confirm_order(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Финальное подтверждение заказа – сохранение в БД и Google Sheets."""
     query = update.callback_query
@@ -365,8 +392,12 @@ async def confirm_order(update: Update, context: ContextTypes.DEFAULT_TYPE):
     }
     sheet_ok = append_order_to_sheet(order_data)
 
+    # Очищаем корзину и временные данные
     clear_cart(user_id)
     context.user_data.pop('order_comment', None)
+
+    # Отправляем уведомление в группу
+    await send_order_notification(context, order_data, order_id, sheet_ok)
 
     # Показываем главное меню
     menu = context.bot_data.get('menu')
