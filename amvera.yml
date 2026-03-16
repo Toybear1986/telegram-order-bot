@@ -2,10 +2,11 @@ meta:
   environment: python
   toolchain:
     name: pip
-    version: 3.11
+    version: "3.11"
 build:
   requirementsPath: requirements.txt
 run:
-  script: python bot.py
   persistenceMount: /data
+  script: python bot.py
   containerPort: 80
+  scriptName: bot.py
