@@ -25,17 +25,25 @@ async def get_menu():
         return {}
 
 async def load_menu_and_build_index(context: ContextTypes.DEFAULT_TYPE):
-    menu = await get_menu()
+    menu = await get_menu()  # теперь получаем все товары
     if not menu:
         return None
-    items_by_id = {}
+    # Словарь всех товаров по id (для управления)
+    all_items_by_id = {}
+    # Словарь категорий только с доступными товарами (для отображения)
+    available_menu = {}
     for cat, items in menu.items():
+        available_items = []
         for itm in items:
             if 'id' in itm:
-                items_by_id[itm['id']] = (cat, itm)
-    context.bot_data['menu'] = menu
-    context.bot_data['items_by_id'] = items_by_id
-    return menu
+                all_items_by_id[itm['id']] = (cat, itm)
+            if itm.get('available', False):
+                available_items.append(itm)
+        if available_items:
+            available_menu[cat] = available_items
+    context.bot_data['menu'] = available_menu
+    context.bot_data['items_by_id'] = all_items_by_id
+    return available_menu
 
 def format_items_list(items):
     lines = []

@@ -40,7 +40,7 @@ def load_menu_from_csv(url):
                 'price': price,
                 'available': row.get('Доступно', 'Да').strip().lower() == 'да'
             }
-            if item['available'] and item['name']:
+            if item['name']:  # добавляем всегда, если есть название
                 menu[category].append(item)
         logger.info(f"Загружено категорий: {len(menu)}")
         return menu
