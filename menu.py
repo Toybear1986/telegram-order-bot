@@ -1,14 +1,20 @@
 import logging
 import requests
 import csv
+import time
+import random
 from io import StringIO
 
 logger = logging.getLogger(__name__)
 
 def load_menu_from_csv(url):
-    logger.info(f"Загрузка меню из {url}")
+    # Добавляем параметр для обхода кеша
+    cache_bust = int(time.time() * 1000)  # миллисекунды
+    separator = '&' if '?' in url else '?'
+    url_with_cache = f"{url}{separator}_={cache_bust}"
+    logger.info(f"Загрузка меню из {url_with_cache}")
     try:
-        response = requests.get(url, timeout=10)
+        response = requests.get(url_with_cache, timeout=10)
         response.encoding = 'utf-8'
         logger.info(f"Статус ответа: {response.status_code}")
         if response.status_code != 200:
@@ -40,7 +46,7 @@ def load_menu_from_csv(url):
                 'price': price,
                 'available': row.get('Доступно', 'Да').strip().lower() == 'да'
             }
-            if item['name']:  # добавляем всегда, если есть название
+            if item['name']:
                 menu[category].append(item)
         logger.info(f"Загружено категорий: {len(menu)}")
         return menu
