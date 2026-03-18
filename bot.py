@@ -525,12 +525,13 @@ async def confirm_order(update: Update, context: ContextTypes.DEFAULT_TYPE):
     order_id = save_order_to_db(user_id, user_name, items_str, total, comment)
 
     order_data = {
-        "user_id": user_id,
-        "user_name": user_name,
-        "username": username,
-        "items_str": items_str,
-        "total_amount": total,
-        "comment": comment
+    "order_id": order_id,
+    "user_id": user_id,
+    "user_name": user_name,
+    "username": username,
+    "items_str": items_str,
+    "total_amount": total,
+    "comment": comment
     }
     sheet_ok = append_order_to_sheet(order_data)
 
