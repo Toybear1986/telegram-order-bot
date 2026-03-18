@@ -4,7 +4,7 @@ from telegram.ext import (
     Application, CommandHandler, CallbackQueryHandler, MessageHandler,
     filters, ContextTypes, ConversationHandler
 )
-from config import BOT_TOKEN, ADMIN_CHAT_ID, GROUP_CHAT_ID
+from config import BOT_TOKEN, ADMIN_CHAT_ID, GROUP_CHAT_ID, STAFF_IDS
 from database import init_db, add_to_cart, get_cart, update_cart_quantity, clear_cart, save_order_to_db
 from menu import load_menu_from_csv
 from sheets import append_order_to_sheet, update_item_availability
@@ -385,6 +385,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 logging.error(f"Ошибка отправки сообщения клиенту: {e}")
 
         await query.answer(f"Статус заказа №{order_id} изменён на {new_status}")
+        return  # важно: не возвращаем состояние
 
     elif data == "back_to_cart":
         return await show_cart(update, context)
@@ -541,8 +542,7 @@ async def confirm_order(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if sheet_ok:
         await query.edit_message_text(
             f"✅ Заказ №{order_id} оформлен!\n\n{items_str}\n\nИтого: {total}₽\n\n"
-            "У нас камерный формат, поэтому мы принимаем только наличные. Большое спасибо, если расплатитесь без сдачи!\n\n"
-            "Спасибо!",
+            "У нас камерный формат, поэтому мы принимаем только наличные. Большое спасибо, если расплатитесь без сдачи!\n\n",
             reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("📋 В главное меню", callback_data="back_to_cats")]])
         )
     else:
@@ -707,6 +707,9 @@ def main():
         await update.message.reply_text("\n".join(lines), parse_mode='HTML')
 
     application = Application.builder().token(BOT_TOKEN).build()
+
+    # Глобальный обработчик для кнопок управления заказами (должен быть до ConversationHandler)
+    application.add_handler(CallbackQueryHandler(button_handler, pattern="^order_"))
 
     conv_handler = ConversationHandler(
         entry_points=[CommandHandler("start", start)],
