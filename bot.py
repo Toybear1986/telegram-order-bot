@@ -25,24 +25,31 @@ async def get_menu():
         return {}
 
 async def load_menu_and_build_index(context: ContextTypes.DEFAULT_TYPE):
-    menu = await get_menu()  # теперь получаем все товары
+    logging.info("load_menu_and_build_index: started")
+    menu = await get_menu()
     if not menu:
+        logging.error("load_menu_and_build_index: get_menu returned empty or None")
         return None
-    # Словарь всех товаров по id (для управления)
+    logging.info(f"load_menu_and_build_index: got menu with {len(menu)} categories")
+
     all_items_by_id = {}
-    # Словарь категорий только с доступными товарами (для отображения)
     available_menu = {}
+
     for cat, items in menu.items():
+        logging.info(f"Processing category '{cat}' with {len(items)} items")
         available_items = []
         for itm in items:
             if 'id' in itm:
                 all_items_by_id[itm['id']] = (cat, itm)
+                logging.debug(f"Item ID {itm['id']}: {itm['name']}, available={itm.get('available')}")
             if itm.get('available', False):
                 available_items.append(itm)
         if available_items:
             available_menu[cat] = available_items
+
     context.bot_data['menu'] = available_menu
     context.bot_data['items_by_id'] = all_items_by_id
+    logging.info(f"load_menu_and_build_index: built index with {len(all_items_by_id)} items, available categories: {len(available_menu)}")
     return available_menu
 
 def format_items_list(items):
@@ -641,11 +648,15 @@ async def set_item_availability(update: Update, context: ContextTypes.DEFAULT_TY
         parse_mode='Markdown'
     )
 
-    # Перезагружаем всё меню из CSV, чтобы синхронизировать bot_data
+    # Перезагружаем всё меню из CSV
     await update.message.reply_text("🔄 Перезагружаю меню из Google Sheets...")
     new_menu = await load_menu_and_build_index(context)
     if new_menu:
-        await update.message.reply_text("✅ Меню успешно обновлено.")
+        # Отправляем новое главное меню, чтобы пользователь сразу видел изменения
+        await update.message.reply_text(
+            "✅ Меню обновлено. Выберите категорию:",
+            reply_markup=categories_keyboard(new_menu)
+        )
     else:
         await update.message.reply_text("⚠️ Не удалось загрузить меню, но статус товара уже изменён.")    
 
