@@ -129,17 +129,23 @@ def pre_checkout_keyboard(has_comment):
     return InlineKeyboardMarkup(buttons)
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    menu = context.bot_data.get('menu')
-    if not menu:
-        menu = await load_menu_and_build_index(context)
-    if not menu:
-        await update.message.reply_text("Меню временно недоступно. Попробуйте позже.")
+    logging.info(f"start called by user {update.effective_user.id}")
+    try:
+        menu = context.bot_data.get('menu')
+        if not menu:
+            menu = await load_menu_and_build_index(context)
+        if not menu:
+            await update.message.reply_text("Меню временно недоступно. Попробуйте позже.")
+            return ConversationHandler.END
+        await update.message.reply_text(
+            "Добро пожаловать в меню мероприятия \"Пар да Мёд\"! Выбирайте:",
+            reply_markup=categories_keyboard(menu)
+        )
+        return CHOOSING_CATEGORY
+    except Exception as e:
+        logging.exception(f"Error in start: {e}")
+        await update.message.reply_text("Произошла ошибка. Попробуйте позже.")
         return ConversationHandler.END
-    await update.message.reply_text(
-        "Добро пожаловать в меню мероприятия \"Пар да Мёд\"! Выбирайте:",
-        reply_markup=categories_keyboard(menu)
-    )
-    return CHOOSING_CATEGORY
 
 async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
