@@ -588,7 +588,7 @@ async def hide(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await set_item_availability(update, context, "Нет")
 
 async def set_item_availability(update: Update, context: ContextTypes.DEFAULT_TYPE, target_status: str):
-    """Общая логика для включения/выключения товара."""
+    """Общая логика для включения/выключения товара с последующей перезагрузкой меню."""
     if update.effective_user.id != ADMIN_CHAT_ID:
         await update.message.reply_text("⛔ У вас нет прав для этой команды.")
         return
@@ -631,7 +631,15 @@ async def set_item_availability(update: Update, context: ContextTypes.DEFAULT_TY
     await update.message.reply_text(
         f"✅ Статус товара *{item['name']}* (ID {item_id}) изменён с '{current_status}' на '{target_status}'.",
         parse_mode='Markdown'
-    )    
+    )
+
+    # Перезагружаем всё меню из CSV, чтобы синхронизировать bot_data
+    await update.message.reply_text("🔄 Перезагружаю меню из Google Sheets...")
+    new_menu = await load_menu_and_build_index(context)
+    if new_menu:
+        await update.message.reply_text("✅ Меню успешно обновлено.")
+    else:
+        await update.message.reply_text("⚠️ Не удалось загрузить меню, но статус товара уже изменён.")    
 
 if __name__ == "__main__":
     main()
