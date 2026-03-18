@@ -7,7 +7,13 @@ from telegram.ext import (
 from config import BOT_TOKEN, ADMIN_CHAT_ID, GROUP_CHAT_ID, STAFF_IDS
 from database import init_db, add_to_cart, get_cart, update_cart_quantity, clear_cart, save_order_to_db
 from menu import load_menu_from_csv
-from sheets import append_order_to_sheet, update_item_availability
+from sheets import (
+    append_order_to_sheet,
+    update_item_availability,
+    update_order_status,
+    get_orders_by_status,
+    increment_tip_sent
+)
 import config
 
 # Список фраз о чаевых
