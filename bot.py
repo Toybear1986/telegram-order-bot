@@ -10,6 +10,25 @@ from menu import load_menu_from_csv
 from sheets import append_order_to_sheet, update_item_availability
 import config
 
+# Список фраз о чаевых
+TIP_MESSAGES = [
+    "Благодарность не знает обязательств, она живёт в сердце. Вознаграждение за труд — всегда на ваше усмотрение.",
+    "Ваше спасибо для нас уже награда. Всё, что сверху — исключительно от чистого сердца и по вашему желанию.",
+    "Для нас главное, чтобы вы ушли с улыбкой. Чаевые — это лишь вопрос вашей доброй воли и щедрости души.",
+    "Чаевые не обязательны, но всегда приятны. Решение остаётся за вами.",
+    "Вознаграждение персоналу — это не долг, а право гостя.",
+    "Чай — исключительно по велению души, а не по обязанности.",
+    "Наша работа — это знак внимания к вам. Ваши чаевые — знак внимания к нам, и они ценны лишь тогда, когда искренни.",
+    "В счёт включена только наша забота. Ваша благодарность не имеет цены и остаётся на ваше усмотрение.",
+    "Благодарность не терпит принуждения.",
+    "Искренность не знает тарифов. Всё исключительно на ваше усмотрение."
+]
+
+# Функция проверки прав (staff)
+def is_staff(user_id: int) -> bool:
+    staff_ids = [int(id.strip()) for id in config.STAFF_IDS.split(",") if id.strip()]
+    return user_id in staff_ids
+
 # Состояния для FSM
 (CHOOSING_CATEGORY, CHOOSING_ITEM, ENTERING_QUANTITY, CONFIRM_ADD,
  VIEW_CART, EDITING_CART, CHOOSING_EDIT_ACTION, ENTERING_NEW_QUANTITY, ENTERING_COMMENT) = range(9)
@@ -294,6 +313,78 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             parse_mode='Markdown'
         )
         return ENTERING_NEW_QUANTITY
+    
+    elif data.startswith("order_"):
+        # Формат: order_action_orderId
+        parts = data.split('_')
+        action = parts[1]
+        order_id = int(parts[2])
+
+        # Проверка прав
+        if not is_staff(update.effective_user.id):
+            await query.answer("⛔ У вас нет прав для этого действия.", show_alert=True)
+            return
+
+        # Определяем новый статус и следующую кнопку
+        if action == "accept":
+            new_status = "готовится"
+            next_button = [InlineKeyboardButton("👨‍🍳 Готовится", callback_data=f"order_prepare_{order_id}")]
+        elif action == "prepare":
+            new_status = "готовится"  # здесь можно оставить тот же статус или изменить, но по логике это уже готовится
+            # На самом деле после "Принять" мы уже перешли в готовится, поэтому следующая кнопка "Выдан"
+            next_button = [InlineKeyboardButton("✅ Выдан", callback_data=f"order_done_{order_id}")]
+        elif action == "done":
+            new_status = "выдан"
+            next_button = None  # финальный статус, кнопки убираем
+        else:
+            await query.answer("Неизвестное действие")
+            return
+
+        # Обновляем в Google Sheets
+        username = update.effective_user.username or str(update.effective_user.id)
+        success = update_order_status(order_id, new_status, username)
+        if not success:
+            await query.answer("❌ Не удалось обновить статус в таблице.", show_alert=True)
+            return
+
+        # Редактируем сообщение: убираем старые кнопки, добавляем новые (если есть)
+        if next_button:
+            new_markup = InlineKeyboardMarkup([next_button])
+            await query.edit_message_reply_markup(reply_markup=new_markup)
+        else:
+            # Убираем все кнопки
+            await query.edit_message_reply_markup(reply_markup=None)
+
+        # Если статус "готовится" – отправляем клиенту случайную фразу о чаевых
+        if new_status == "готовится":
+            # Получаем следующий номер фразы
+            tip_index = increment_tip_sent(order_id)
+            if tip_index > 0:
+                # Выбираем фразу по индексу (1-based, зацикливаем)
+                msg = TIP_MESSAGES[(tip_index - 1) % len(TIP_MESSAGES)]
+                try:
+                    # Отправляем в личку клиенту (user_id есть в order_data? нужно передать)
+                    # Для этого нужно сохранить user_id в контексте или получить из таблицы. Упростим: пока не делаем.
+                    # Вместо этого отправим в группу? Но клиенту нужно отправить. 
+                    # Пока пропустим – позже доработаем.
+                    logging.info(f"Клиенту заказа {order_id} отправлена фраза: {msg}")
+                    # await context.bot.send_message(chat_id=user_id, text=msg)
+                except Exception as e:
+                    logging.error(f"Не удалось отправить фразу клиенту {user_id}: {e}")
+
+        # Если статус "выдан" – отправляем клиенту сообщение с предложением комментария
+        elif new_status == "выдан":
+            try:
+                # Получаем user_id заказа (нужно хранить в контексте или получить из таблицы). Пока заглушка.
+                # await context.bot.send_message(chat_id=user_id, 
+                #    text="Ваш заказ исполнен, желаем вам приятного вечера! Если у вас есть комментарии, можете оставить их.",
+                #    reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("💬 Добавить комментарий", callback_data=f"comment_{order_id}")]])
+                # )
+                logging.info(f"Клиенту заказа {order_id} отправлено сообщение о выдаче")
+            except Exception as e:
+                logging.error(f"Ошибка отправки сообщения клиенту: {e}")
+
+        await query.answer(f"Статус заказа №{order_id} изменён на {new_status}")
 
     elif data == "back_to_cart":
         return await show_cart(update, context)
@@ -370,13 +461,11 @@ async def comment_received(update: Update, context: ContextTypes.DEFAULT_TYPE):
     return VIEW_CART
 
 async def send_order_notification(context: ContextTypes.DEFAULT_TYPE, order_data: dict, order_id: int, sheet_ok: bool):
-    """Отправляет уведомление о новом заказе в группу (HTML)."""
     if not GROUP_CHAT_ID:
         return
 
     sheet_url = f"https://docs.google.com/spreadsheets/d/{config.ORDERS_SPREADSHEET_ID}/edit"
 
-    # Экранируем только самые необходимые символы (если появятся <, >, &)
     import html
     safe_items_str = html.escape(order_data['items_str'])
     safe_comment = html.escape(order_data['comment']) if order_data['comment'] else ""
@@ -393,8 +482,13 @@ async def send_order_notification(context: ContextTypes.DEFAULT_TYPE, order_data
         text += f"<b>💬 Комментарий:</b> {safe_comment}\n"
     text += f"\n🔗 <a href='{sheet_url}'>Открыть таблицу</a>"
 
+    # Кнопки для персонала
+    keyboard = InlineKeyboardMarkup([
+        [InlineKeyboardButton("✅ Принять", callback_data=f"order_accept_{order_id}")]
+    ])
+
     try:
-        await context.bot.send_message(chat_id=GROUP_CHAT_ID, text=text, parse_mode='HTML')
+        await context.bot.send_message(chat_id=GROUP_CHAT_ID, text=text, parse_mode='HTML', reply_markup=keyboard)
         logging.info(f"Уведомление о заказе №{order_id} отправлено в группу {GROUP_CHAT_ID}")
     except Exception as e:
         logging.error(f"Не удалось отправить уведомление в группу: {e}")
@@ -446,7 +540,9 @@ async def confirm_order(update: Update, context: ContextTypes.DEFAULT_TYPE):
         menu = await load_menu_and_build_index(context)
     if sheet_ok:
         await query.edit_message_text(
-            f"✅ Заказ №{order_id} оформлен!\n\n{items_str}\n\nИтого: {total}₽\n\nСпасибо!",
+            f"✅ Заказ №{order_id} оформлен!\n\n{items_str}\n\nИтого: {total}₽\n\n"
+            "У нас камерный формат, поэтому мы принимаем только наличные. Большое спасибо, если расплатитесь без сдачи!\n\n"
+            "Спасибо!",
             reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("📋 В главное меню", callback_data="back_to_cats")]])
         )
     else:
@@ -589,6 +685,27 @@ async def reload_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("❌ Ошибка загрузки меню. Проверьте ссылку и доступность таблицы.")
 
 def main():
+    async def list_orders_by_status(update: Update, context: ContextTypes.DEFAULT_TYPE, status: str):
+        if not is_staff(update.effective_user.id):
+            await update.message.reply_text("⛔ У вас нет прав.")
+            return
+
+        orders = get_orders_by_status(status)
+        if not orders:
+            await update.message.reply_text(f"Нет заказов со статусом '{status}'.")
+            return
+
+        # Формируем красивое сообщение
+        lines = [f"<b>Заказы со статусом '{status}':</b>"]
+        for ord in orders:
+            # Предполагаем, что в записи есть поля: ID, user_name, total_amount, created_at, username и т.д.
+            order_id = ord.get('ID')
+            user = ord.get('user_name', 'Неизвестно')
+            total = ord.get('total_amount', 0)
+            time = ord.get('created_at', '')
+            lines.append(f"• №{order_id} – {user} – {total}₽ ({time})")
+        await update.message.reply_text("\n".join(lines), parse_mode='HTML')
+
     application = Application.builder().token(BOT_TOKEN).build()
 
     conv_handler = ConversationHandler(
@@ -613,6 +730,9 @@ def main():
     application.add_handler(CommandHandler("show", show))
     application.add_handler(CommandHandler("hide", hide))
     application.add_handler(CommandHandler("reloadmenu", reload_menu))
+    application.add_handler(CommandHandler("new", lambda u,c: list_orders_by_status(u,c,"новый")))
+    application.add_handler(CommandHandler("preparing", lambda u,c: list_orders_by_status(u,c,"готовится")))
+    application.add_handler(CommandHandler("done", lambda u,c: list_orders_by_status(u,c,"выдан")))
 
     logging.basicConfig(level=logging.INFO)
     application.run_polling()

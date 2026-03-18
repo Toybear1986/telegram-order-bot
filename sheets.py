@@ -57,7 +57,84 @@ def append_order_to_sheet(order_data):
     except Exception as e:
         logger.exception("❌ Непредвиденная ошибка при записи в Google Sheets")
         return False
-    
+
+def update_order_status(order_id: int, new_status: str, updated_by: str):
+    """
+    Обновляет статус заказа, логирует кто и когда.
+    order_id: номер заказа (предполагается в колонке A)
+    new_status: 'готовится', 'выдан' (или 'новый', но он начальный)
+    updated_by: username сотрудника
+    """
+    try:
+        client = gspread.service_account_from_dict(GOOGLE_CREDENTIALS_INFO)
+        sheet = client.open_by_key(ORDERS_SPREADSHEET_ID).sheet1
+
+        # Ищем строку с order_id в колонке A (индекс 1)
+        cell = sheet.find(str(order_id))
+        if not cell:
+            logger.error(f"Заказ №{order_id} не найден")
+            return False
+
+        # Определяем индексы колонок по заголовкам
+        headers = sheet.row_values(1)
+        try:
+            status_col = headers.index("Статус") + 1
+            updated_by_col = headers.index("status_updated_by") + 1
+            updated_at_col = headers.index("status_updated_at") + 1
+        except ValueError as e:
+            logger.error(f"Не найдены необходимые колонки: {e}")
+            return False
+
+        # Обновляем ячейки
+        moscow_tz = ZoneInfo("Europe/Moscow")
+        now = datetime.now(moscow_tz).strftime("%Y-%m-%d %H:%M:%S")
+        sheet.update_cell(cell.row, status_col, new_status)
+        sheet.update_cell(cell.row, updated_by_col, updated_by)
+        sheet.update_cell(cell.row, updated_at_col, now)
+        logger.info(f"Заказ №{order_id} обновлён: статус={new_status}, кем={updated_by}")
+        return True
+    except Exception as e:
+        logger.exception(f"Ошибка обновления статуса заказа №{order_id}: {e}")
+        return False
+
+def get_orders_by_status(status: str):
+    """Возвращает список заказов с заданным статусом."""
+    try:
+        client = gspread.service_account_from_dict(GOOGLE_CREDENTIALS_INFO)
+        sheet = client.open_by_key(ORDERS_SPREADSHEET_ID).sheet1
+        records = sheet.get_all_records()
+        # Фильтруем по статусу (предполагаем, что колонка называется "Статус")
+        filtered = [rec for rec in records if rec.get("Статус") == status]
+        # Возвращаем список словарей (каждый содержит все поля)
+        return filtered
+    except Exception as e:
+        logger.exception(f"Ошибка получения заказов по статусу {status}: {e}")
+        return []
+
+def increment_tip_sent(order_id: int) -> int:
+    """Увеличивает счётчик отправленных фраз о чаевых, возвращает новый номер (1-based)."""
+    try:
+        client = gspread.service_account_from_dict(GOOGLE_CREDENTIALS_INFO)
+        sheet = client.open_by_key(ORDERS_SPREADSHEET_ID).sheet1
+        headers = sheet.row_values(1)
+        try:
+            tip_col = headers.index("tip_sent") + 1
+        except ValueError:
+            logger.error("Колонка tip_sent не найдена")
+            return 0
+
+        cell = sheet.find(str(order_id))
+        if not cell:
+            return 0
+
+        current = int(sheet.cell(cell.row, tip_col).value or 0)
+        new_val = current + 1
+        sheet.update_cell(cell.row, tip_col, new_val)
+        return new_val
+    except Exception as e:
+        logger.exception(f"Ошибка обновления tip_sent для заказа {order_id}: {e}")
+        return 0
+
 def update_item_availability(item_id: int, status: str):
     """
     Устанавливает статус доступности товара в таблице меню.
