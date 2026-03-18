@@ -13,7 +13,8 @@ from sheets import (
     update_order_status,
     get_orders_by_status,
     increment_tip_sent,
-    get_user_id_by_order   # новый импорт
+    get_user_id_by_order,   
+    save_feedback   # новый импорт
 )
 import config
 
@@ -38,7 +39,8 @@ def is_staff(user_id: int) -> bool:
 
 # Состояния для FSM
 (CHOOSING_CATEGORY, CHOOSING_ITEM, ENTERING_QUANTITY, CONFIRM_ADD,
- VIEW_CART, EDITING_CART, CHOOSING_EDIT_ACTION, ENTERING_NEW_QUANTITY, ENTERING_COMMENT) = range(9)
+ VIEW_CART, EDITING_CART, CHOOSING_EDIT_ACTION, ENTERING_NEW_QUANTITY,
+ ENTERING_COMMENT, FEEDBACK_START, FEEDBACK_RECEIVED) = range(11)
 
 # Инициализация БД при старте
 init_db()
@@ -365,11 +367,12 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             tip_index = increment_tip_sent(order_id)
             if tip_index > 0:
                 msg = TIP_MESSAGES[(tip_index - 1) % len(TIP_MESSAGES)]
+                full_text = f"Ваш заказ уже готовится и скоро будет у вас.\n\n{msg}"
                 user_id_for_msg = get_user_id_by_order(order_id)
                 if user_id_for_msg:
                     try:
-                        await context.bot.send_message(chat_id=user_id_for_msg, text=msg)
-                        logging.info(f"Клиенту {user_id_for_msg} отправлена фраза: {msg}")
+                        await context.bot.send_message(chat_id=user_id_for_msg, text=full_text)
+                        logging.info(f"Клиенту {user_id_for_msg} отправлена фраза с предупреждением: {full_text}")
                     except Exception as e:
                         logging.error(f"Не удалось отправить фразу клиенту {user_id_for_msg}: {e}")
                 else:
@@ -378,16 +381,27 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             user_id_for_msg = get_user_id_by_order(order_id)
             if user_id_for_msg:
                 try:
+                    # Сохраняем номер заказа в context.user_data для последующего использования
+                    context.user_data['feedback_order_id'] = order_id
                     await context.bot.send_message(
                         chat_id=user_id_for_msg,
-                        text="Ваш заказ исполнен, желаем вам приятного вечера! Если у вас есть комментарии, можете оставить их."
+                        text="Ваш заказ исполнен, желаем вам приятного вечера! Если у вас есть комментарии или пожелания, нажмите кнопку ниже.",
+                        reply_markup=InlineKeyboardMarkup([
+                            [InlineKeyboardButton("💬 Оставить отзыв", callback_data=f"feedback_{order_id}")]
+                        ])
                     )
-                    logging.info(f"Клиенту {user_id_for_msg} отправлено сообщение о выдаче заказа")
+                    logging.info(f"Клиенту {user_id_for_msg} отправлено сообщение о выдаче заказа с кнопкой отзыва")
                 except Exception as e:
                     logging.error(f"Ошибка отправки сообщения клиенту: {e}")
 
         await query.answer(f"Статус заказа №{order_id} изменён на {new_status}")
         return  # важно: не возвращаем состояние диалога
+
+    elif data.startswith("feedback_"):
+        order_id = int(data.split('_')[1])
+        context.user_data['feedback_order_id'] = order_id
+        await query.edit_message_text("Пожалуйста, напишите ваш отзыв или комментарий к заказу (одним сообщением).")
+        return FEEDBACK_START
 
     elif data == "back_to_cart":
         return await show_cart(update, context)
@@ -462,6 +476,20 @@ async def comment_received(update: Update, context: ContextTypes.DEFAULT_TYPE):
         reply_markup=pre_checkout_keyboard(True)
     )
     return VIEW_CART
+
+async def feedback_received(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    feedback = update.message.text
+    order_id = context.user_data.get('feedback_order_id')
+    if not order_id:
+        await update.message.reply_text("Ошибка: не удалось определить заказ. Попробуйте позже.")
+        return ConversationHandler.END
+    success = save_feedback(order_id, feedback)
+    if success:
+        await update.message.reply_text("Спасибо за ваш отзыв! Мы ценим ваше мнение.")
+    else:
+        await update.message.reply_text("Не удалось сохранить отзыв, но мы обязательно учтём ваше сообщение. Спасибо!")
+    context.user_data.pop('feedback_order_id', None)
+    return ConversationHandler.END
 
 async def send_order_notification(context: ContextTypes.DEFAULT_TYPE, order_data: dict, order_id: int, sheet_ok: bool):
     if not GROUP_CHAT_ID:
@@ -728,6 +756,7 @@ def main():
             EDITING_CART: [CallbackQueryHandler(button_handler)],
             ENTERING_NEW_QUANTITY: [MessageHandler(filters.TEXT & ~filters.COMMAND, new_quantity_received)],
             ENTERING_COMMENT: [MessageHandler(filters.TEXT & ~filters.COMMAND, comment_received)],
+            FEEDBACK_START: [MessageHandler(filters.TEXT & ~filters.COMMAND, feedback_received)],
         },
         fallbacks=[CommandHandler("cancel", cancel)],
     )
@@ -739,6 +768,7 @@ def main():
     application.add_handler(CommandHandler("new", lambda u,c: list_orders_by_status(u,c,"новый")))
     application.add_handler(CommandHandler("preparing", lambda u,c: list_orders_by_status(u,c,"готовится")))
     application.add_handler(CommandHandler("done", lambda u,c: list_orders_by_status(u,c,"выдан")))
+    application.add_handler(CallbackQueryHandler(button_handler, pattern="^feedback_"))
 
     logging.basicConfig(level=logging.INFO)
     application.run_polling()

@@ -6,6 +6,34 @@ import logging
 
 logger = logging.getLogger(__name__)
 
+def save_feedback(order_id: int, feedback: str):
+    """Сохраняет отзыв клиента в таблицу заказов (колонка feedback)."""
+    try:
+        client = gspread.service_account_from_dict(GOOGLE_CREDENTIALS_INFO)
+        sheet = client.open_by_key(ORDERS_SPREADSHEET_ID).sheet1
+
+        # Ищем заказ по номеру во второй колонке (B)
+        cell = sheet.find(str(order_id), in_column=2)
+        if not cell:
+            logger.error(f"Заказ №{order_id} не найден при сохранении отзыва")
+            return False
+
+        # Определяем индекс колонки feedback (или создаём её)
+        headers = sheet.row_values(1)
+        try:
+            feedback_col = headers.index("feedback") + 1
+        except ValueError:
+            # Если колонки нет, добавляем её в конец
+            feedback_col = len(headers) + 1
+            sheet.update_cell(1, feedback_col, "feedback")
+
+        sheet.update_cell(cell.row, feedback_col, feedback)
+        logger.info(f"Отзыв для заказа {order_id} сохранён: {feedback}")
+        return True
+    except Exception as e:
+        logger.exception(f"Ошибка сохранения отзыва для заказа {order_id}: {e}")
+        return False
+
 def get_user_id_by_order(order_id: int) -> int:
     """Возвращает user_id заказа по его номеру."""
     try:
