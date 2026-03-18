@@ -12,7 +12,8 @@ from sheets import (
     update_item_availability,
     update_order_status,
     get_orders_by_status,
-    increment_tip_sent
+    increment_tip_sent,
+    get_user_id_by_order   # новый импорт
 )
 import config
 
@@ -334,11 +335,10 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         # Определяем новый статус и следующую кнопку
         if action == "accept":
             new_status = "готовится"
-            next_button = [InlineKeyboardButton("👨‍🍳 Готовится", callback_data=f"order_prepare_{order_id}")]
+            next_button = [InlineKeyboardButton("👨‍🍳 Готовить", callback_data=f"order_prepare_{order_id}")]
         elif action == "prepare":
-            new_status = "готовится"  # здесь можно оставить тот же статус или изменить, но по логике это уже готовится
-            # На самом деле после "Принять" мы уже перешли в готовится, поэтому следующая кнопка "Выдан"
-            next_button = [InlineKeyboardButton("✅ Выдан", callback_data=f"order_done_{order_id}")]
+            new_status = "готовится"  # статус остаётся тем же, кнопка меняется на "Выдать"
+            next_button = [InlineKeyboardButton("✅ Выдать", callback_data=f"order_done_{order_id}")]
         elif action == "done":
             new_status = "выдан"
             next_button = None  # финальный статус, кнопки убираем
@@ -358,35 +358,33 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             new_markup = InlineKeyboardMarkup([next_button])
             await query.edit_message_reply_markup(reply_markup=new_markup)
         else:
-            # Убираем все кнопки
             await query.edit_message_reply_markup(reply_markup=None)
 
-        # Если статус "готовится" – отправляем клиенту случайную фразу о чаевых
-        if new_status == "готовится":
-            # Получаем следующий номер фразы
-            tip_index = increment_tip_sent(order_id)
-            if tip_index > 0:
-                # Выбираем фразу по индексу (1-based, зацикливаем)
-                msg = TIP_MESSAGES[(tip_index - 1) % len(TIP_MESSAGES)]
+    # Если статус "готовится" – отправляем клиенту случайную фразу о чаевых
+    if new_status == "готовится":
+        tip_index = increment_tip_sent(order_id)
+        if tip_index > 0:
+            msg = TIP_MESSAGES[(tip_index - 1) % len(TIP_MESSAGES)]
+            user_id_for_msg = get_user_id_by_order(order_id)
+            if user_id_for_msg:
                 try:
-                    # Отправляем в личку клиенту (user_id есть в order_data? нужно передать)
-                    # Для этого нужно сохранить user_id в контексте или получить из таблицы. Упростим: пока не делаем.
-                    # Вместо этого отправим в группу? Но клиенту нужно отправить. 
-                    # Пока пропустим – позже доработаем.
-                    logging.info(f"Клиенту заказа {order_id} отправлена фраза: {msg}")
-                    # await context.bot.send_message(chat_id=user_id, text=msg)
+                    await context.bot.send_message(chat_id=user_id_for_msg, text=msg)
+                    logging.info(f"Клиенту {user_id_for_msg} отправлена фраза: {msg}")
                 except Exception as e:
-                    logging.error(f"Не удалось отправить фразу клиенту {user_id}: {e}")
+                    logging.error(f"Не удалось отправить фразу клиенту {user_id_for_msg}: {e}")
+            else:
+                logging.error(f"Не удалось получить user_id для заказа {order_id}")
 
-        # Если статус "выдан" – отправляем клиенту сообщение с предложением комментария
-        elif new_status == "выдан":
+    # Если статус "выдан" – отправляем клиенту сообщение о завершении заказа
+    elif new_status == "выдан":
+        user_id_for_msg = get_user_id_by_order(order_id)
+        if user_id_for_msg:
             try:
-                # Получаем user_id заказа (нужно хранить в контексте или получить из таблицы). Пока заглушка.
-                # await context.bot.send_message(chat_id=user_id, 
-                #    text="Ваш заказ исполнен, желаем вам приятного вечера! Если у вас есть комментарии, можете оставить их.",
-                #    reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("💬 Добавить комментарий", callback_data=f"comment_{order_id}")]])
-                # )
-                logging.info(f"Клиенту заказа {order_id} отправлено сообщение о выдаче")
+                await context.bot.send_message(
+                    chat_id=user_id_for_msg,
+                    text="Ваш заказ исполнен, желаем вам приятного вечера! Если у вас есть комментарии, можете оставить их."
+                )
+                logging.info(f"Клиенту {user_id_for_msg} отправлено сообщение о выдаче заказа")
             except Exception as e:
                 logging.error(f"Ошибка отправки сообщения клиенту: {e}")
 

@@ -6,6 +6,23 @@ import logging
 
 logger = logging.getLogger(__name__)
 
+def get_user_id_by_order(order_id: int) -> int:
+    """Возвращает user_id заказа по его номеру."""
+    try:
+        client = gspread.service_account_from_dict(GOOGLE_CREDENTIALS_INFO)
+        sheet = client.open_by_key(ORDERS_SPREADSHEET_ID).sheet1
+        # Ищем ячейку с order_id во второй колонке (B)
+        cell = sheet.find(str(order_id), in_column=2)
+        if not cell:
+            logger.error(f"Заказ №{order_id} не найден при получении user_id")
+            return 0
+        # user_id находится в колонке C (индекс 3)
+        user_id_val = sheet.cell(cell.row, 3).value
+        return int(user_id_val) if user_id_val else 0
+    except Exception as e:
+        logger.exception(f"Ошибка получения user_id для заказа {order_id}: {e}")
+        return 0
+
 def append_order_to_sheet(order_data):
     """
     order_data: dict with keys:
