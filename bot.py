@@ -156,7 +156,8 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "<b>Выберите категорию:</b>"
     )
         await update.message.reply_text(
-            "Добро пожаловать в меню мероприятия \"Пар да Мёд\"! Выбирайте:",
+            welcome_text,
+            parse_mode='HTML',
             reply_markup=categories_keyboard(menu)
         )
         return CHOOSING_CATEGORY
