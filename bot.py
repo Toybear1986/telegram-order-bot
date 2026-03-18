@@ -360,36 +360,34 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         else:
             await query.edit_message_reply_markup(reply_markup=None)
 
-    # Если статус "готовится" – отправляем клиенту случайную фразу о чаевых
-    if new_status == "готовится":
-        tip_index = increment_tip_sent(order_id)
-        if tip_index > 0:
-            msg = TIP_MESSAGES[(tip_index - 1) % len(TIP_MESSAGES)]
+        # Отправка сообщений клиенту (теперь внутри ветки order_)
+        if new_status == "готовится":
+            tip_index = increment_tip_sent(order_id)
+            if tip_index > 0:
+                msg = TIP_MESSAGES[(tip_index - 1) % len(TIP_MESSAGES)]
+                user_id_for_msg = get_user_id_by_order(order_id)
+                if user_id_for_msg:
+                    try:
+                        await context.bot.send_message(chat_id=user_id_for_msg, text=msg)
+                        logging.info(f"Клиенту {user_id_for_msg} отправлена фраза: {msg}")
+                    except Exception as e:
+                        logging.error(f"Не удалось отправить фразу клиенту {user_id_for_msg}: {e}")
+                else:
+                    logging.error(f"Не удалось получить user_id для заказа {order_id}")
+        elif new_status == "выдан":
             user_id_for_msg = get_user_id_by_order(order_id)
             if user_id_for_msg:
                 try:
-                    await context.bot.send_message(chat_id=user_id_for_msg, text=msg)
-                    logging.info(f"Клиенту {user_id_for_msg} отправлена фраза: {msg}")
+                    await context.bot.send_message(
+                        chat_id=user_id_for_msg,
+                        text="Ваш заказ исполнен, желаем вам приятного вечера! Если у вас есть комментарии, можете оставить их."
+                    )
+                    logging.info(f"Клиенту {user_id_for_msg} отправлено сообщение о выдаче заказа")
                 except Exception as e:
-                    logging.error(f"Не удалось отправить фразу клиенту {user_id_for_msg}: {e}")
-            else:
-                logging.error(f"Не удалось получить user_id для заказа {order_id}")
-
-    # Если статус "выдан" – отправляем клиенту сообщение о завершении заказа
-    elif new_status == "выдан":
-        user_id_for_msg = get_user_id_by_order(order_id)
-        if user_id_for_msg:
-            try:
-                await context.bot.send_message(
-                    chat_id=user_id_for_msg,
-                    text="Ваш заказ исполнен, желаем вам приятного вечера! Если у вас есть комментарии, можете оставить их."
-                )
-                logging.info(f"Клиенту {user_id_for_msg} отправлено сообщение о выдаче заказа")
-            except Exception as e:
-                logging.error(f"Ошибка отправки сообщения клиенту: {e}")
+                    logging.error(f"Ошибка отправки сообщения клиенту: {e}")
 
         await query.answer(f"Статус заказа №{order_id} изменён на {new_status}")
-        return  # важно: не возвращаем состояние
+        return  # важно: не возвращаем состояние диалога
 
     elif data == "back_to_cart":
         return await show_cart(update, context)
