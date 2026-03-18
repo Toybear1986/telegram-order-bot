@@ -7,7 +7,7 @@ from telegram.ext import (
 from config import BOT_TOKEN, ADMIN_CHAT_ID, GROUP_CHAT_ID
 from database import init_db, add_to_cart, get_cart, update_cart_quantity, clear_cart, save_order_to_db
 from menu import load_menu_from_csv
-from sheets import append_order_to_sheet
+from sheets import append_order_to_sheet, update_item_availability
 import config
 
 # Состояния для FSM
@@ -535,6 +535,21 @@ async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("Действие отменено.")
     return ConversationHandler.END
 
+async def reload_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Перезагружает меню из CSV (только для администратора)."""
+    # Проверяем, что команду вызвал администратор
+    if update.effective_user.id != ADMIN_CHAT_ID:
+        await update.message.reply_text("⛔ У вас нет прав для этой команды.")
+        return
+
+    await update.message.reply_text("🔄 Перезагружаю меню из Google Sheets...")
+    # Загружаем свежее меню и обновляем индексы
+    menu = await load_menu_and_build_index(context)
+    if menu:
+        await update.message.reply_text("✅ Меню успешно перезагружено.")
+    else:
+        await update.message.reply_text("❌ Ошибка загрузки меню. Проверьте ссылку и доступность таблицы.")
+
 def main():
     application = Application.builder().token(BOT_TOKEN).build()
 
@@ -557,9 +572,66 @@ def main():
     )
 
     application.add_handler(conv_handler)
+    application.add_handler(CommandHandler("show", show))
+    application.add_handler(CommandHandler("hide", hide))
+    application.add_handler(CommandHandler("reloadmenu", reload_menu))
 
     logging.basicConfig(level=logging.INFO)
     application.run_polling()
+
+async def show(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Включить товар (сделать доступным)"""
+    await set_item_availability(update, context, "Да")
+
+async def hide(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Выключить товар (сделать недоступным)"""
+    await set_item_availability(update, context, "Нет")
+
+async def set_item_availability(update: Update, context: ContextTypes.DEFAULT_TYPE, target_status: str):
+    """Общая логика для включения/выключения товара."""
+    if update.effective_user.id != ADMIN_CHAT_ID:
+        await update.message.reply_text("⛔ У вас нет прав для этой команды.")
+        return
+
+    if not context.args or len(context.args) != 1:
+        await update.message.reply_text(f"❌ Использование: /{context.command[0]} <id товара>")
+        return
+
+    try:
+        item_id = int(context.args[0])
+    except ValueError:
+        await update.message.reply_text("❌ ID должен быть числом.")
+        return
+
+    # Ищем товар в текущем кеше
+    items_by_id = context.bot_data.get('items_by_id')
+    if not items_by_id:
+        await update.message.reply_text("❌ Меню ещё не загружено. Попробуйте позже.")
+        return
+
+    if item_id not in items_by_id:
+        await update.message.reply_text(f"❌ Товар с ID {item_id} не найден в меню.")
+        return
+
+    category, item = items_by_id[item_id]
+    current_status = "Да" if item['available'] else "Нет"
+    if current_status == target_status:
+        await update.message.reply_text(f"ℹ️ Товар уже имеет статус '{target_status}'.")
+        return
+
+    # Обновляем в Google Sheets
+    success = update_item_availability(item_id, target_status)
+    if not success:
+        await update.message.reply_text("❌ Не удалось обновить статус в таблице. Проверьте логи.")
+        return
+
+    # Обновляем локальный кеш
+    item['available'] = (target_status == "Да")
+
+    await update.message.reply_text(
+        f"✅ Статус товара *{item['name']}* (ID {item_id}) изменён с '{current_status}' на '{target_status}'.",
+        parse_mode='Markdown'
+    )    
 
 if __name__ == "__main__":
     main()

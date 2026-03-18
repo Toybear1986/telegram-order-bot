@@ -1,7 +1,7 @@
 import gspread
-from config import GOOGLE_CREDENTIALS_INFO, ORDERS_SPREADSHEET_ID
+from config import GOOGLE_CREDENTIALS_INFO, ORDERS_SPREADSHEET_ID, MENU_SPREADSHEET_ID
 from datetime import datetime
-from zoneinfo import ZoneInfo  # для Python 3.9+
+from zoneinfo import ZoneInfo
 import logging
 
 logger = logging.getLogger(__name__)
@@ -56,4 +56,40 @@ def append_order_to_sheet(order_data):
         return False
     except Exception as e:
         logger.exception("❌ Непредвиденная ошибка при записи в Google Sheets")
+        return False
+    
+def update_item_availability(item_id: int, status: str):
+    """
+    Устанавливает статус доступности товара в таблице меню.
+    status: "Да" или "Нет"
+    """
+    if not GOOGLE_CREDENTIALS_INFO or not MENU_SPREADSHEET_ID:
+        logger.error("❌ Нет credentials или ID таблицы меню")
+        return False
+
+    try:
+        client = gspread.service_account_from_dict(GOOGLE_CREDENTIALS_INFO)
+        # Открываем таблицу меню по её ID
+        sheet = client.open_by_key(MENU_SPREADSHEET_ID).sheet1
+
+        # Получаем заголовки, чтобы найти колонку "Доступно"
+        headers = sheet.row_values(1)
+        try:
+            col_index = headers.index("Доступно") + 1  # +1 для gspread (индексация с 1)
+        except ValueError:
+            logger.error("❌ Не найдена колонка 'Доступно' в таблице меню")
+            return False
+
+        # Ищем ячейку с ID (предполагаем, что ID в первой колонке)
+        cell = sheet.find(str(item_id))
+        if not cell:
+            logger.error(f"❌ Товар с ID {item_id} не найден в таблице меню")
+            return False
+
+        # Обновляем ячейку в той же строке, в колонке "Доступно"
+        sheet.update_cell(cell.row, col_index, status)
+        logger.info(f"✅ Статус товара ID {item_id} изменён на {status}")
+        return True
+    except Exception as e:
+        logger.exception(f"❌ Ошибка при обновлении доступности: {e}")
         return False
