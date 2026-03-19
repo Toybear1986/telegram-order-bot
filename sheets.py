@@ -153,13 +153,24 @@ def increment_tip_sent(order_id: int) -> int:
             logger.error("Колонка tip_sent не найдена")
             return 0
 
-        cell = sheet.find(str(order_id), in_column=2) # ИСПРАВЛЕНО
+        # Ищем заказ по номеру во второй колонке (B)
+        cell = sheet.find(str(order_id), in_column=2)
         if not cell:
+            logger.error(f"Заказ №{order_id} не найден при обновлении tip_sent")
             return 0
 
-        current = int(sheet.cell(cell.row, tip_col).value or 0)
+        # Получаем текущее значение и безопасно преобразуем в целое
+        raw_value = sheet.cell(cell.row, tip_col).value
+        try:
+            # Пытаемся преобразовать, заменяя запятую на точку, затем приводим к float и округляем вниз
+            current = int(float(raw_value.replace(',', '.'))) if raw_value else 0
+        except (ValueError, AttributeError):
+            logger.warning(f"Не удалось распарсить значение tip_sent: {raw_value}, устанавливаем 0")
+            current = 0
+
         new_val = current + 1
         sheet.update_cell(cell.row, tip_col, new_val)
+        logger.info(f"Счётчик tip_sent для заказа {order_id} увеличен с {current} до {new_val}")
         return new_val
     except Exception as e:
         logger.exception(f"Ошибка обновления tip_sent для заказа {order_id}: {e}")
