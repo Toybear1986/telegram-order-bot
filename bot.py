@@ -732,11 +732,18 @@ def main():
         # Формируем красивое сообщение
         lines = [f"<b>Заказы со статусом '{status}':</b>"]
         for ord in orders:
-            # Предполагаем, что в записи есть поля: ID, user_name, total_amount, created_at, username и т.д.
-            order_id = ord.get('ID')
-            user = ord.get('user_name', 'Неизвестно')
-            total = ord.get('total_amount', 0)
-            time = ord.get('created_at', '')
+            # Используем правильные названия колонок из таблицы
+            order_id = ord.get('Номер заказа', '—')
+            user = ord.get('Имя', 'Неизвестно')
+            total = ord.get('Сумма', 0)
+            time = ord.get('Дата', '')
+
+            # Преобразуем сумму в число (если пришла строка)
+            try:
+                total = int(float(str(total).replace(',', '.')))
+            except (ValueError, TypeError):
+                total = 0
+
             lines.append(f"• №{order_id} – {user} – {total}₽ ({time})")
         await update.message.reply_text("\n".join(lines), parse_mode='HTML')
 
