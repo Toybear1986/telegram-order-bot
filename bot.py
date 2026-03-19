@@ -381,16 +381,19 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             user_id_for_msg = get_user_id_by_order(order_id)
             if user_id_for_msg:
                 try:
-                    # Сохраняем номер заказа в context.user_data для последующего использования
+                    # Сохраняем номер заказа для последующего использования при отзыве
                     context.user_data['feedback_order_id'] = order_id
+                    # Создаём клавиатуру с двумя кнопками
+                    keyboard = InlineKeyboardMarkup([
+                        [InlineKeyboardButton("💬 Оставить отзыв", callback_data=f"feedback_{order_id}")],
+                        [InlineKeyboardButton("📋 Вернуться в меню", callback_data="back_to_cats")]
+                    ])
                     await context.bot.send_message(
                         chat_id=user_id_for_msg,
                         text="Ваш заказ исполнен, желаем вам приятного вечера! Если у вас есть комментарии или пожелания, нажмите кнопку ниже.",
-                        reply_markup=InlineKeyboardMarkup([
-                            [InlineKeyboardButton("💬 Оставить отзыв", callback_data=f"feedback_{order_id}")]
-                        ])
+                        reply_markup=keyboard
                     )
-                    logging.info(f"Клиенту {user_id_for_msg} отправлено сообщение о выдаче заказа с кнопкой отзыва")
+                    logging.info(f"Клиенту {user_id_for_msg} отправлено сообщение о выдаче заказа с кнопками отзыва и возврата в меню")
                 except Exception as e:
                     logging.error(f"Ошибка отправки сообщения клиенту: {e}")
 
