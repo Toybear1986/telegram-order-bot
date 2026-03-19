@@ -362,8 +362,8 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         else:
             await query.edit_message_reply_markup(reply_markup=None)
 
-        # Отправка сообщений клиенту (теперь внутри ветки order_)
-        if new_status == "готовится":
+        # Отправка сообщений клиенту
+        if new_status == "готовится" and action == "accept":  # только при первом переходе
             tip_index = increment_tip_sent(order_id)
             if tip_index > 0:
                 msg = TIP_MESSAGES[(tip_index - 1) % len(TIP_MESSAGES)]
@@ -381,9 +381,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             user_id_for_msg = get_user_id_by_order(order_id)
             if user_id_for_msg:
                 try:
-                    # Сохраняем номер заказа для последующего использования при отзыве
                     context.user_data['feedback_order_id'] = order_id
-                    # Создаём клавиатуру с двумя кнопками
                     keyboard = InlineKeyboardMarkup([
                         [InlineKeyboardButton("💬 Оставить отзыв", callback_data=f"feedback_{order_id}")],
                         [InlineKeyboardButton("📋 Вернуться в меню", callback_data="back_to_cats")]
