@@ -14,7 +14,8 @@ from sheets import (
     get_orders_by_status,
     increment_tip_sent,
     get_user_id_by_order,   
-    save_feedback   # новый импорт
+    save_feedback,
+    get_next_order_id   # новый импорт
 )
 import config
 
@@ -547,16 +548,23 @@ async def confirm_order(update: Update, context: ContextTypes.DEFAULT_TYPE):
     username = user.username or ""
     comment = context.user_data.get('order_comment', '')
 
-    order_id = save_order_to_db(user_id, user_name, items_str, total, comment)
+    # Получаем следующий номер заказа из Google Sheets
+    order_id = get_next_order_id()
+    if not order_id:
+        await query.answer("❌ Ошибка получения номера заказа. Попробуйте позже.", show_alert=True)
+        return
+
+    # Сохраняем в локальную БД (для резерва) с этим же ID
+    save_order_to_db(order_id, user_id, user_name, items_str, total, comment)
 
     order_data = {
-    "order_id": order_id,
-    "user_id": user_id,
-    "user_name": user_name,
-    "username": username,
-    "items_str": items_str,
-    "total_amount": total,
-    "comment": comment
+        "order_id": order_id,
+        "user_id": user_id,
+        "user_name": user_name,
+        "username": username,
+        "items_str": items_str,
+        "total_amount": total,
+        "comment": comment
     }
     sheet_ok = append_order_to_sheet(order_data)
 

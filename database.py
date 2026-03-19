@@ -80,15 +80,14 @@ def clear_cart(user_id):
     conn.close()
 
 # ===== Сохранение заказа =====
-def save_order_to_db(user_id, user_name, items_str, total_amount, comment):
-    """Сохраняет оформленный заказ в таблицу orders и возвращает его id"""
+def save_order_to_db(order_id, user_id, user_name, items_str, total_amount, comment):
+    """Сохраняет заказ в локальную БД с указанным ID (для резерва)."""
     conn = sqlite3.connect(DB_NAME)
     cur = conn.cursor()
     cur.execute('''
-        INSERT INTO orders (user_id, user_name, items, total_amount, comment)
-        VALUES (?, ?, ?, ?, ?)
-    ''', (user_id, user_name, items_str, total_amount, comment))
-    order_id = cur.lastrowid
+        INSERT INTO orders (id, user_id, user_name, items, total_amount, comment)
+        VALUES (?, ?, ?, ?, ?, ?)
+    ''', (order_id, user_id, user_name, items_str, total_amount, comment))
     conn.commit()
     conn.close()
     return order_id

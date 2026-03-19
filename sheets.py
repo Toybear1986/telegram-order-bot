@@ -33,6 +33,37 @@ def save_feedback(order_id: int, feedback: str):
     except Exception as e:
         logger.exception(f"Ошибка сохранения отзыва для заказа {order_id}: {e}")
         return False
+    
+def get_next_order_id():
+    """
+    Получает следующий номер заказа из ячейки A1 на листе "Counter".
+    Если листа нет – создаёт его. Возвращает новый номер.
+    """
+    try:
+        client = gspread.service_account_from_dict(GOOGLE_CREDENTIALS_INFO)
+        spreadsheet = client.open_by_key(ORDERS_SPREADSHEET_ID)
+
+        # Пытаемся открыть лист "Counter", если нет – создаём
+        try:
+            counter_sheet = spreadsheet.worksheet("Counter")
+        except gspread.WorksheetNotFound:
+            counter_sheet = spreadsheet.add_worksheet(title="Counter", rows=1, cols=1)
+            counter_sheet.update_cell(1, 1, 0)  # инициализируем счётчик
+
+        # Читаем текущее значение
+        current = counter_sheet.cell(1, 1).value
+        try:
+            current = int(current or 0)
+        except ValueError:
+            current = 0
+
+        next_id = current + 1
+        counter_sheet.update_cell(1, 1, next_id)
+        logger.info(f"Следующий номер заказа: {next_id}")
+        return next_id
+    except Exception as e:
+        logger.exception(f"Ошибка получения следующего номера заказа: {e}")
+        return None
 
 def get_user_id_by_order(order_id: int) -> int:
     """Возвращает user_id заказа по его номеру."""
